@@ -1,6 +1,6 @@
 **TurboSSE — proposed library and example usage**
 
-Implemented in `src/` and `dist/`. See [README.md](README.md) for the shipped API, Python 3.9 examples, and test commands. This document records the design used for implementation.
+Implemented in `src/`, with distribution files generated into the ignored `dist/` directory by the build. See [README.md](README.md) for the shipped API, Python 3.9 examples, and test commands. This document records the design used for implementation.
 
 Build a dependency-free JavaScript library for an embedded device's debugging page. HTML attributes bind incoming values to elements; the library adds a connection-status bar, reconnects, and exports received messages as CSV. Payloads are primarily raw strings, with explicit JSON extraction and user-defined transforms when needed. This document is the implementation plan; the examples describe the proposed API.
 

@@ -34,13 +34,13 @@ jobs:
       - name: Install build dependency
         run: python -m pip install -r requirements-build.txt
 
-      - name: Build minified and gzip assets
+      - name: Build minified assets and C headers
         run: python tools/build.py
 
       - name: Verify build and distribution
         run: |
           python tools/build.py --check
-          python -m unittest tests.test_server -v
+          python -m unittest tests.test_server tests.test_build -v
 
       - name: Upload distribution
         uses: actions/upload-artifact@v7
@@ -51,5 +51,7 @@ jobs:
             dist/turbo-sse.min.js.gz
             dist/turbo-sse.css
             dist/turbo-sse.css.gz
+            dist/turbo-sse.h
+            dist/turbo-sse-gzip.h
           if-no-files-found: error
           retention-days: 30

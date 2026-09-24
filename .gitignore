@@ -25,4 +25,5 @@ Thumbs.db
 *.swo
 *~
 
-# Keep dist/ versioned so the example works directly after checkout.
+# Generated distribution assets (recreated by tools/build.py)
+/dist/

@@ -2,17 +2,20 @@
 
 A small, dependency-free JavaScript library for embedded-device debug pages. Bind SSE events to HTML attributes, replace values or append logs, apply your own transforms, and export original message payloads as CSV. A sticky topbar shows connection status and reconnects automatically after recoverable stream failures.
 
-The runtime is in `dist/turbo-sse.min.js` and `dist/turbo-sse.css`. Copy both onto your device. No Node.js, bundler, CDN, or Python is needed on the device. Readable sources are in `src/`; Python 3.9 is used for the example server, build tooling, and tests.
+Build the runtime into `dist/turbo-sse.min.js` and `dist/turbo-sse.css`, or download the GitHub Actions artifact. Copy both files onto your device. No Node.js, bundler, CDN, or Python is needed on the device. Readable sources are in `src/`; Python 3.9 is used for the example server, build tooling, and tests. Generated `dist/` files are ignored by Git.
 
-The shipped assets total **4,438 bytes gzip**. All 76 tests passed, and the mixed raw/JSON benchmark received 600,000 messages over 10 minutes. See [VALIDATION.md](VALIDATION.md) for the measured results and their scope.
+The shipped JavaScript and CSS total **4,438 bytes gzip**. The browser tests passed in Chromium, Firefox, and WebKit, and the mixed raw/JSON benchmark received 600,000 messages over 10 minutes. See [VALIDATION.md](VALIDATION.md) for the measured results and their scope.
 
 **Run the example**
 
 ```sh
-python3.9 examples/server.py
+python3.9 -m venv .venv39
+.venv39/bin/python -m pip install -r requirements-build.txt
+.venv39/bin/python tools/build.py
+.venv39/bin/python examples/server.py
 ```
 
-Open `http://127.0.0.1:8000`. The server uses only Python's standard library and serves the checked-in distribution files. To simulate a broken connection or a silent device:
+Open `http://127.0.0.1:8000`. The server uses only Python's standard library and serves the generated distribution files. Build once after cloning and again after changing the library sources. To simulate a broken connection or a silent device:
 
 ```sh
 python3.9 examples/server.py --disconnect-every 10
@@ -177,7 +180,29 @@ The tests run against real localhost SSE endpoints in Chromium, Firefox, and Web
 
 `TURBO_SSE_BROWSERS=chromium,firefox` selects engines for discovery. `TURBO_SSE_ASSET=src/turbo-sse.js` exercises the readable source instead of the default minified asset. The Python tests and example require no Node.js installation. Playwright and rjsmin are development dependencies only.
 
-The build emits minified assets plus deterministic `.gz` variants and enforces a combined 5 KiB gzip budget. When serving a precompressed `.gz` asset, keep the original JavaScript/CSS content type and send `Content-Encoding: gzip`; do not merely link to a `.gz` URL without that header.
+The build emits minified assets, deterministic `.gz` variants, and C headers for both JavaScript representations, and enforces a combined 5 KiB gzip budget for the JavaScript and CSS. When serving a precompressed `.gz` asset, keep the original JavaScript/CSS content type and send `Content-Encoding: gzip`; do not merely link to a `.gz` URL without that header.
+
+**Embed the JavaScript in firmware**
+
+Include `dist/turbo-sse.h` in the C or C++ source file that serves the library. It defines two symbols with internal linkage:
+
+| Symbol | Type | Meaning |
+| --- | --- | --- |
+| `turbo_sse_js` | `const unsigned char[]` | The minified JavaScript bytes |
+| `turbo_sse_js_len` | `const size_t` | Number of bytes to send |
+
+Send `turbo_sse_js_len` bytes from `turbo_sse_js` with `Content-Type: text/javascript; charset=utf-8`. The array contains the exact UTF-8 bytes of `turbo-sse.min.js`, uncompressed and without a trailing NUL. Use the length rather than `strlen`, and do not send `Content-Encoding: gzip` for these bytes. Include the header in the serving translation unit to avoid keeping extra copies in firmware; adapt storage placement to your platform if needed.
+
+For a smaller firmware payload, include `dist/turbo-sse-gzip.h`. It embeds the exact bytes of `turbo-sse.min.js.gz` and defines:
+
+| Symbol | Type | Meaning |
+| --- | --- | --- |
+| `turbo_sse_js_gz` | `const unsigned char[]` | Gzip-compressed minified JavaScript |
+| `turbo_sse_js_gz_len` | `const size_t` | Compressed byte length to send |
+
+Serve `turbo_sse_js_gz_len` bytes from `turbo_sse_js_gz` directly, with `Content-Type: text/javascript; charset=utf-8` and `Content-Encoding: gzip`. If sending `Content-Length`, use the compressed length. The browser decompresses the response; the device does not need to compress or decompress anything at runtime. Use the supplied length because gzip data contains embedded NUL bytes. The two headers have distinct symbols and include guards and can coexist when both representations are needed.
+
+The Python build creates both headers automatically, and `tools/build.py --check` checks them for staleness alongside the browser assets. Header tests compile C99 and C++11 programs that include both headers and write the embedded bytes, then compare their output against the corresponding files. Gzip output is also decompressed and compared with the original minified JavaScript. These tests require `cc` and `c++`, which are available on the GitHub-hosted Ubuntu runner.
 
 **GitHub Actions build**
 
@@ -186,8 +211,10 @@ The `Build minified library` workflow runs on pushes, pull requests, and manual 
 - `turbo-sse.min.js`
 - `turbo-sse.css`
 - Their precompressed `.gz` variants
+- `turbo-sse.h`, exposing the minified JavaScript for C/C++ firmware
+- `turbo-sse-gzip.h`, exposing the gzip-compressed minified JavaScript
 
-Download the artifact from the workflow run's **Artifacts** section. Artifacts are retained for 30 days. The workflow runs the five server/distribution tests; the full browser suite remains available through the test command above. The existing `dist/` files stay versioned so the demo works directly after checkout.
+Download the artifact from the workflow run's **Artifacts** section. Artifacts are retained for 30 days. The workflow runs the server/distribution and C-header tests; the full browser suite remains available through the test command above. Distribution files are generated during the workflow and are not committed to Git.
 
 To build locally without installing browser-test dependencies:
 
