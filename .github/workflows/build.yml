@@ -3,14 +3,22 @@ name: Build minified library
 on:
   push:
   pull_request:
+  release:
+    types: [published]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing release tag to build and attach assets to (optional)'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ inputs.release_tag || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'release' && !inputs.release_tag }}
 
 jobs:
   build:
@@ -22,6 +30,7 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || github.ref }}
           persist-credentials: false
 
       - name: Set up Python
@@ -55,3 +64,34 @@ jobs:
             dist/turbo-sse-gzip.h
           if-no-files-found: error
           retention-days: 30
+
+  publish:
+    name: Attach release assets
+    needs: build
+    if: ${{ github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download verified distribution
+        uses: actions/download-artifact@v8
+        with:
+          name: turbo-sse-dist
+          path: dist
+
+      - name: Upload files to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
+        run: |
+          gh release upload "$RELEASE_TAG" \
+            dist/turbo-sse.min.js \
+            dist/turbo-sse.min.js.gz \
+            dist/turbo-sse.css \
+            dist/turbo-sse.css.gz \
+            dist/turbo-sse.h \
+            dist/turbo-sse-gzip.h \
+            --clobber

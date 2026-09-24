@@ -206,7 +206,7 @@ The Python build creates both headers automatically, and `tools/build.py --check
 
 **GitHub Actions build**
 
-The `Build minified library` workflow runs on pushes, pull requests, and manual dispatch. It uses Python 3.9, installs `requirements-build.txt`, builds the assets, checks the size budget and distribution, and uploads a `turbo-sse-dist` artifact containing:
+The `Build minified library` workflow runs on pushes, pull requests, published GitHub Releases, and manual dispatch. It uses Python 3.9, installs `requirements-build.txt`, builds the assets, checks the size budget and distribution, and uploads a `turbo-sse-dist` artifact containing:
 
 - `turbo-sse.min.js`
 - `turbo-sse.css`
@@ -215,6 +215,16 @@ The `Build minified library` workflow runs on pushes, pull requests, and manual 
 - `turbo-sse-gzip.h`, exposing the gzip-compressed minified JavaScript
 
 Download the artifact from the workflow run's **Artifacts** section. Artifacts are retained for 30 days. The workflow runs the server/distribution and C-header tests; the full browser suite remains available through the test command above. Distribution files are generated during the workflow and are not committed to Git.
+
+When a GitHub Release is published, a second job downloads the verified artifact and attaches all six files to that release's **Assets** section. The build job uses read-only repository permissions; only the release upload job gets `contents: write`. Creating or pushing a tag by itself produces an Actions artifact. Publish a GitHub Release for that tag to get release downloads automatically. The tagged commit must include this updated workflow for the automatic release trigger to run.
+
+To attach files to an existing release whose tag predates the workflow update:
+
+1. Commit and push this workflow to the default branch.
+2. Open **Actions → Build minified library → Run workflow** and select the default branch.
+3. Set **release_tag** to the existing tag (for example, `0.1.0`) and run it.
+
+The manual run checks out the specified tag, builds and verifies its files, and uploads them to the existing release. The tagged version must include the build script and header tests. Leave **release_tag** empty for a normal build without release uploads. Re-running a release upload replaces assets with matching filenames using `gh release upload --clobber`; it does not move the tag or create another release.
 
 To build locally without installing browser-test dependencies:
 
