@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>TurboSSE · Device debug</title>
+  <link rel="stylesheet" href="/turbo-sse.css">
+  <link rel="stylesheet" href="/demo.css">
+  <script defer src="/debug-transforms.js"></script>
+  <script defer src="/turbo-sse.min.js"></script>
+</head>
+<body data-sse-connect="/events" data-sse-events="diagnostic" data-sse-timeout="30000">
+  <main>
+    <header><p class="eyebrow">TURBOSSE / DEVICE 01</p><h1>Device debug</h1>
+      <p>Live measurements and logs from the Python device simulator.</p></header>
+    <div class="metrics">
+      <section><h2>Temperature</h2><p class="value" data-sse-event="temperature" data-sse-transform="celsius_to_degree">—</p><small>Raw value · user transform</small></section>
+      <section><h2>Motor speed</h2><p class="value"><span data-sse-event="telemetry" data-sse-json="/rpm">—</span> <small>RPM</small></p><small>JSON telemetry</small></section>
+      <section><h2>Supply voltage</h2><p class="value" data-sse-event="telemetry" data-sse-json="/voltage" data-sse-transform="volts_to_millivolts">—</p><small>JSON value · user transform</small></section>
+    </div>
+    <section><h2>Device state</h2><div data-sse-event="status" data-sse-format="html">Waiting for device…</div></section>
+    <section><h2>Latest telemetry payload</h2><pre data-sse-event="telemetry">Waiting for telemetry…</pre></section>
+    <section><h2>Device log</h2><pre class="log" data-sse-event="log" data-sse-swap="append" data-sse-limit="500"></pre></section>
+    <p class="footnote">CSV includes original payloads and diagnostic events. The log keeps the latest 500 entries.</p>
+  </main>
+</body>
+</html>

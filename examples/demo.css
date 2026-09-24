@@ -1,0 +1,13 @@
+* { box-sizing: border-box; }
+body { margin: 0; background: #f7f9fb; color: #182330; font: 16px/1.5 system-ui, sans-serif; }
+main { max-width: 1000px; margin: 2.5rem auto; padding: 0 1.25rem; }
+header { margin-bottom: 2rem; }
+h1 { font-size: 2.25rem; letter-spacing: -.04em; margin: .25rem 0; }
+h2 { font-size: .95rem; margin: 0 0 1rem; color: #526376; }
+.eyebrow { font-size: .75rem; font-weight: 700; letter-spacing: .12em; color: #1769bd; }
+.metrics { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 1rem; }
+section { border: 1px solid #dce3ea; border-radius: 8px; background: white; padding: 1.25rem; margin-bottom: 1rem; }
+.value { font-size: 2rem; font-variant-numeric: tabular-nums; margin: 0 0 .5rem; }
+small,.footnote { color: #526376; font-size: .8rem; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; font: 13px/1.65 ui-monospace,monospace; }
+.log { max-height: 260px; overflow-y: auto; }

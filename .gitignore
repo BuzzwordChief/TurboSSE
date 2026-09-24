@@ -1,0 +1,28 @@
+# Python environments and generated caches
+.venv*/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Downloaded browsers and local test/benchmark output
+.playwright/
+test-results/
+benchmarks/local*.json
+
+# Local configuration and editor/OS files
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Keep dist/ versioned so the example works directly after checkout.

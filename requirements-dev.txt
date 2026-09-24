@@ -1,0 +1,4 @@
+# Development only; neither the shipped library nor demo server needs these.
+-r requirements-build.txt
+# Playwright 1.55 supports Python 3.9.
+playwright==1.55.0

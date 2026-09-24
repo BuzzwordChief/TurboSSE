@@ -1,0 +1,2 @@
+# The standalone asset build needs only the JavaScript minifier.
+rjsmin==1.2.5

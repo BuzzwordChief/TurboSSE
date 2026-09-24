@@ -1,0 +1,48 @@
+{
+  "python": "3.9.6",
+  "platform": "macOS-27.0-arm64-arm-64bit",
+  "machine": "arm64",
+  "browser": "Chromium 140.0.7339.16",
+  "seconds": 30.0,
+  "rate": 1000,
+  "bindings": 100,
+  "mode": "raw",
+  "transform": false,
+  "render_pause_seconds": 2,
+  "payloads": "raw: decimal counter; json: {value: counter}; log: sample counter + newline (5% of messages)",
+  "sent": 30000,
+  "stats": {
+    "received": 30000,
+    "evicted": 20000,
+    "oversized": 0,
+    "parseErrors": 0,
+    "transformErrors": 0,
+    "configErrors": 0,
+    "appendDrops": 1000,
+    "state": "Connected",
+    "retained": 10000,
+    "bytes": 368000,
+    "lastEventId": "boot:30000"
+  },
+  "heap_samples": [
+    {
+      "seconds": 0.0,
+      "bytes_after_gc": 1124864
+    },
+    {
+      "seconds": 30.1,
+      "bytes_after_gc": 2422444
+    }
+  ],
+  "receive": {
+    "p95_ms": 0.10000002384185791,
+    "max_ms": 1,
+    "mean_ms": 0.020693333331743877
+  },
+  "flush": {
+    "p95_ms": 0.30000001192092896,
+    "max_ms": 1.199999988079071,
+    "mean_ms": 0.178681709739488
+  },
+  "timing_note": "p95/max use the last 10,000 callbacks; means cover the full run. Flush excludes browser layout/paint. Heap samples force GC; fixture storage is outside browser heap."
+}
