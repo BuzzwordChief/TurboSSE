@@ -2,7 +2,7 @@
 
 [![Build minified library](https://github.com/BuzzwordChief/TurboSSE/actions/workflows/build.yml/badge.svg)](https://github.com/BuzzwordChief/TurboSSE/actions/workflows/build.yml)
 
-Debug pages for embedded devices, driven by Server-Sent Events. Bind events to values and logs with HTML attributes, plot numeric series on synchronized scientific graphs with A/B measurements, and download everything as one ZIP. It is one JavaScript file and one stylesheet, about 18 KiB gzipped together, with no runtime dependencies, so a device can serve it straight from firmware.
+Debug pages for embedded devices, driven by Server-Sent Events. Bind events to values and logs with HTML attributes, plot numeric series and discrete signals on synchronized scientific graphs with A/B measurements, and download everything as one ZIP. It is one JavaScript file and one stylesheet, about 20 KiB gzipped together, with no runtime dependencies, so a device can serve it straight from firmware.
 
 ![The demo page: connection bar, a table of real-time values, and three synchronized plots with an A/B measurement](docs/screenshot.png)
 
@@ -10,6 +10,7 @@ Debug pages for embedded devices, driven by Server-Sent Events. Bind events to v
 
 - **Attribute bindings.** `data-sse-event`, JSON Pointer selection and your own transform functions update text, trusted HTML or append-only logs. The page needs no framework or build step.
 - **Scientific plots.** Canvas time series with synchronized windows and cursors, pan, zoom, range zoom and live follow. A/B measurements give count, extrema, peak-to-peak, mean, RMS, standard deviation, Δy and slope.
+- **Discrete lanes.** States, registers and flags draw as timing-diagram lanes under a curve or on their own, with a stable color per value and measurements of dwell time and changes.
 - **Bounded history.** Plots keep exact samples while their memory budget allows, then summarize older data without losing counts, extrema, means or deviations.
 - **One-click exports.** Every export downloads one ZIP with the original events, one CSV per series and an `export.txt` describing the snapshot.
 - **Connection awareness.** A sticky topbar shows connection state, estimated device uptime and capture counters. Plots mark estimated device restarts, and stalled streams reconnect with a resume cursor.
@@ -27,7 +28,7 @@ python3.9 -m venv .venv39
 .venv39/bin/python examples/server.py
 ```
 
-Open <http://127.0.0.1:8000>. The demo server uses only the Python standard library and serves the built files from `dist/`; build again after changing `src/`. The demo page, [examples/index.html](examples/index.html), has no classes and no stylesheet of its own.
+Open <http://127.0.0.1:8000>. The demo server uses only the Python standard library and serves the built files from `dist/`; build again after changing `src/`. The demo page, [examples/index.html](examples/index.html), has no classes and no stylesheet of its own. Besides its numeric plots, it shows a pump logic lane, a controller state lane and a status register graph made of a single lane.
 
 Simulate faults and load:
 
@@ -141,7 +142,7 @@ A plot is inactive until you click it or move keyboard focus into it. Hovering a
 | Pan | Drag | <kbd>←</kbd> <kbd>→</kbd> |
 | Zoom around the pointer | Wheel | <kbd>+</kbd> <kbd>−</kbd> |
 | Zoom to a time range | Right-drag; with Shift, also zooms y | |
-| Measure an interval | Shift-drag | <kbd>A</kbd> and <kbd>B</kbd> at the cursor, or the view center |
+| Measure an interval | Shift-drag; over a lane, markers snap to its changes | <kbd>A</kbd> and <kbd>B</kbd> at the cursor, or the view center |
 | Clear markers, cancel a drag | | <kbd>Esc</kbd> |
 | Follow new data | **Live** checkbox | <kbd>L</kbd> |
 | Show all history with automatic y | **Fit** | <kbd>F</kbd> |
@@ -163,6 +164,26 @@ Measuring or placing a marker unchecks Live so the markers stay in view. The mar
 
 Below the readout, an A/B line gives both marker times, Δt and 1/Δt. A table gives each series' count, minimum, maximum, peak-to-peak, mean, RMS, population standard deviation, Δy and slope. The line and one row per series are always present, so measuring never moves the page; the table scrolls sideways on plots too narrow for it.
 
+### Discrete lanes
+
+Add `data-sse-discrete` to a series to draw it as a lane: a timing-diagram row for values such as states, register contents or flags. Lanes can sit under a numeric curve in the same graph, or make up a graph of their own:
+
+```html
+<div data-sse-graph data-sse-title="Motor speed" data-sse-sync="bench">
+  <span data-sse-event="telemetry" data-sse-json="/rpm" data-sse-label="Motor speed" data-sse-unit="rpm"></span>
+  <span data-sse-event="telemetry" data-sse-json="/state" data-sse-discrete data-sse-label="Controller"></span>
+  <span data-sse-event="telemetry" data-sse-json="/pump" data-sse-discrete="logic" data-sse-label="Pump"></span>
+</div>
+<div data-sse-graph data-sse-title="Status register" data-sse-event="telemetry" data-sse-json="/status"
+     data-sse-transform="hex16" data-sse-discrete data-sse-label="Status"></div>
+```
+
+- **Modes.** `data-sse-discrete` alone, or `data-sse-discrete="bus"`, draws each value as a labelled segment with slanted ends at every change. `data-sse-discrete="logic"` draws a two-level signal: `1`, `true`, `on`, `high` and non-zero numbers are high; `0`, `false`, `off` and `low` are low, ignoring case.
+- **Values.** A lane's value is its text after JSON selection and the transform, so a transform may return a string such as `0xf23a`. A value holds until the next change; repeated values only confirm it, and only changes are stored. Missing, empty and unrecognized values leave a gap, as does a disconnect, so send the current value again after connecting. Unrecognized logic values count as Graph errors.
+- **Drawing.** Lanes are one text line tall and stack below the numeric area in markup order, sharing its time axis. A graph with only lanes has no y axis, and its height follows its lanes. Lane names sit in the left gutter; synced graphs share one gutter width, so stacked time axes line up. Changes too close together to draw show as a gray block with their count, and zooming in resolves them.
+- **Colors.** A bus lane colors each value by a hash of its text, so the same value has the same color in every lane, graph and session. The legend shows the value at the cursor with its color. Logic lanes use the series color.
+- **Measuring.** Markers placed within 5 px of a change over a lane snap to it. A second table lists each lane's value at A and at B, the changes between them, the distinct values, and the value held longest with its share of the interval. Counts that include summarized history are marked `≥`.
+
 ### Graph values
 
 Graphs accept numeric strings and selected JSON numbers. Null, missing or invalid data leaves a visible gap, and invalid numbers increment the Graph errors counter. A graph transform must be synchronous and pure and return a number, `null` or `undefined`; `undefined` skips the update. Use a numeric conversion for graphs: a display transform that returns `"23.6 °C"` is not a graph value.
@@ -182,6 +203,7 @@ Bindings with the same event, selector, transform and unit share one history and
 | `data-sse-uptime-event` | Event carrying the device uptime in seconds | `uptime` |
 | `data-sse-graph-bytes` | Graph history budget; minimum 8192 | `33554432` (32 MiB) |
 | `data-sse-graph` | Plot a binding, or overlay the series inside the element | Absent |
+| `data-sse-discrete` | Draw the series as a lane: `bus`, or `logic` for a two-level signal | Absent: numeric curve |
 | `data-sse-sync` | Group sharing time window, cursor and markers | Independent |
 | `data-sse-title` | Graph header title | The graph's label, else its series labels |
 | `data-sse-label`, `data-sse-unit` | Series name and unit | Event name; no unit |
@@ -284,6 +306,20 @@ Series files contain the numeric values actually plotted, after numeric transfor
 | `gaps` | Number of gaps or invalid samples represented |
 | `detected_elapsed_s` | When a restart was inferred, separate from its estimated position |
 
+Lane files use their own columns, with one row per value held rather than per update:
+
+| Columns | Meaning |
+| --- | --- |
+| `series,event,json_pointer,transform` | Lane and source metadata |
+| `kind` | `value`, `gap`, `summary` or estimated `restart` |
+| `elapsed_start_s,elapsed_end_s` | When the value was set, and when the next change or the end of the export came |
+| `uptime_start_s,uptime_end_s,segment` | Estimated device time and local segment; empty when unknown |
+| `value` | The value held; logic lanes use `1` and `0` |
+| `changes,first,last` | For summaries: the number of changes and the first and last value |
+| `detected_elapsed_s` | When a restart was inferred |
+
+An Export view of a lane starts with the value already held at the start of the interval, so that row can begin earlier.
+
 A summary describes several samples over an interval, and its mean is never exported as a pretend sample. An interval that intersects a summary includes the whole summary and reports the actual coverage. Gap and restart rows carry no value. Original payloads, unselected JSON fields and compacted samples cannot be rebuilt from series files; keep raw capture or record the stream externally when you need them.
 
 ## Memory bounds
@@ -291,6 +327,7 @@ A summary describes several samples over an interval, and its mean is never expo
 - **Raw capture** is a ring buffer limited by event count and string storage. The byte budget charges two bytes per UTF-16 code unit of payloads, names and IDs. The oldest events are evicted whole; an event larger than the whole budget is dropped, counted as Oversized, and still rendered.
 - **Append targets** each have a 256 KiB budget for transformed output, shared by pending and displayed entries. Old entries are discarded and counted as Append drops. Replacement targets keep only the newest pending value per animation frame.
 - **Graph history** uses indexed Float64 chunks and statistical summaries, exact while the shared budget allows; a busy series can use idle series' space. Under pressure, the oldest raw blocks become summaries that keep count, extrema and their times, first and last values, mean, deviation and gaps, and older summaries merge progressively. Retention does not depend on a fixed age or the visible window. Different restart segments are never merged into one summary. If even summaries run out of space, the oldest coverage expires and is counted.
+- **Lanes** store one entry per change in the same history store and budget, so a lane that rarely changes costs little. Under pressure, the oldest changes become summaries that keep the change count and the first and last value. Each lane also keeps up to 1,024 distinct values of up to 64 characters, outside the graph budget; longer values are cut, and further new values count as Graph errors and leave a gap.
 - `data-sse-graph-bytes` covers typed storage plus node and bookkeeping allowances; each distinct source needs at least 4 KiB, and restart markers have a small separate reserve. Canvas and other browser memory come on top. These are limits on managed storage, not exact heap measurements.
 
 ## Styling
@@ -353,7 +390,7 @@ PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright" .venv39/bin/python -m playwright ins
 .venv39/bin/python tools/build.py --check
 ```
 
-The build writes minified assets, deterministic `.gz` variants and both C headers to `dist/`, which is not committed. It reports the combined gzip size against a soft 8 KiB target and fails above the 18 KiB regression ceiling. `--check` fails if any generated file is stale.
+The build writes minified assets, deterministic `.gz` variants and both C headers to `dist/`, which is not committed. It reports the combined gzip size against a soft 8 KiB target and fails above the 22 KiB regression ceiling. `--check` fails if any generated file is stale.
 
 The tests run real localhost SSE endpoints in Chromium, Firefox and WebKit, covering rendering, transforms, capture limits, downloads, reconnects, watchdogs, plot interaction, exports and the demo page. Header tests compile C99 and C++11 programs against both headers, and need `cc` and `c++`. While developing:
 
@@ -392,4 +429,4 @@ Publishing a GitHub Release attaches the same six files to it; pushing a tag alo
 
 ## Validation
 
-[VALIDATION.md](VALIDATION.md) records the test environment, numerical checks against reference statistics, live-run results, distribution sizes and the SHA-256 hashes of the tested build. The script and stylesheet total 18,364 bytes gzipped.
+[VALIDATION.md](VALIDATION.md) records the test environment, numerical checks against reference statistics, live-run results, distribution sizes and the SHA-256 hashes of the tested build. The script and stylesheet total 20,699 bytes gzipped.

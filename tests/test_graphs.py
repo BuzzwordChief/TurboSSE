@@ -314,6 +314,76 @@ class GraphCases:
             self.page.keyboard.press('Enter')
             self.assertEqual(self.page.evaluate('document.activeElement.dataset.action'), 'Back')
 
+    def lane(self, label):
+        return next(x for x in self.stats()['graphs']['series'] if x['label'] == label)
+
+    def test_bus_lane_stores_changes_and_draws_values(self):
+        self.open('<div id="a" data-sse-graph><span data-sse-event="v" data-sse-unit="V"></span>'
+                  '<span data-sse-event="s" data-sse-discrete data-sse-label="State"></span></div>')
+        self.page.evaluate("""() => { window.labels = []; const f = CanvasRenderingContext2D.prototype.fillText;
+            CanvasRenderingContext2D.prototype.fillText = function (t, ...r) { labels.push(t); return f.call(this, t, ...r); }; }""")
+        for i, state in enumerate(['IDLE', 'IDLE', 'RUN', 'RUN', 'RUN', 'FAULT']):
+            self.case.emit('v', str(i)); self.case.emit('s', state); self.page.wait_for_timeout(40)
+        self.received(12)
+        # Repeated values extend the current segment: only the three changes are stored.
+        self.assertEqual(self.lane('State')['raw'], 3)
+        self.assertEqual(self.stats()['configErrors'], 0)  # A lane may share a panel with a series of any unit.
+        entry = self.page.locator('#a .turbo-sse-legend > *').nth(1)
+        expect(entry.locator('.turbo-sse-series-value')).to_have_text('FAULT')
+        self.assertTrue(entry.evaluate('e => e.style.getPropertyValue("--series-color")').startswith('hsl('))
+        self.frames()
+        self.assertTrue({'IDLE', 'RUN', 'State'} <= set(self.page.evaluate('labels')), self.page.evaluate('labels'))
+        # The plot grows by one lane row, and the measurement block gains a lane table.
+        self.assertEqual(self.page.locator('#a .turbo-sse-area').evaluate('e => e.style.height'), 'calc(var(--turbo-sse-height, 220px) + 20px)')
+        expect(self.page.locator('#a .turbo-sse-measure table').nth(1).locator('tbody th')).to_have_text('State')
+        # A disconnect ends the held value with a gap.
+        self.case.disconnect(); self.wait_requests(2); self.text('.turbo-sse-status', 'Connected')
+        self.assertEqual(self.lane('State')['raw'], 4)
+
+    def test_logic_lane_levels_and_invalid_values(self):
+        self.open('<div id="p" data-sse-graph data-sse-event="p" data-sse-discrete="logic" data-sse-label="Pump"></div>'
+                  '<div id="q" data-sse-graph data-sse-event="q" data-sse-discrete="enum"></div>')
+        self.assertEqual(self.stats()['configErrors'], 1)
+        for value in ['true', '1', 'off', '0', 'HIGH', '2', 'maybe']:
+            self.case.emit('p', value)
+        self.received(7)
+        # true, off, HIGH and 2 change the level; 1 and 0 repeat it; maybe is not a level and leaves a gap.
+        self.assertEqual(self.lane('Pump')['raw'], 4)
+        self.assertEqual(self.stats()['graphErrors'], 1)
+        expect(self.page.locator('#p .turbo-sse-series-value')).to_have_text('—')
+
+    def test_lane_panel_snaps_markers_measures_and_exports(self):
+        self.open('<div id="l" data-sse-graph data-sse-event="s" data-sse-discrete data-sse-label="State"></div>')
+        for state in ['A1', 'B2', 'C3', 'B2']:
+            self.case.emit('s', state); self.page.wait_for_timeout(300)
+        self.received(4)
+        # A plot of lanes only has no y axis; its height follows its lanes.
+        self.assertEqual(self.page.locator('#l .turbo-sse-area').evaluate('e => e.style.height'), '80px')
+        changes = [float(r['elapsed_start_s']) for r in self.export_files()['s01-State.csv'] if r['kind'] == 'value']
+        self.assertEqual(len(changes), 4)
+        canvas = self.page.locator('#l canvas'); box = canvas.bounding_box()
+        self.page.mouse.click(box['x'] + box['width'] / 2, box['y'] + 50)
+        self.page.keyboard.press('l'); self.page.keyboard.press('f'); self.page.mouse.move(1, 1)
+        span, _ = self.span('#l')
+        lo = float(re.search(r'([-\d.e+]+)–', self.page.locator('#l .turbo-sse-readout').inner_text()).group(1))
+        left = int(self.page.locator('#l .turbo-sse-tools').evaluate('e => e.style.left')[:-2]) - 2
+        width = self.page.evaluate('document.querySelector("#l canvas").clientWidth') - left - 16
+        top = self.page.evaluate('document.querySelector("#l .turbo-sse-tools").offsetHeight') + 6
+        x = lambda t: box['x'] + left + (t - lo) / span * width
+        # Markers placed within 5 px of a change over the lane stick to it.
+        self.page.mouse.move(x(changes[1]) + 3, box['y'] + top + 24); self.page.keyboard.press('a')
+        self.page.mouse.move(x(changes[3]) - 3, box['y'] + top + 24); self.page.keyboard.press('b')
+        self.frames()
+        first = self.page.locator('#l .turbo-sse-measure p').inner_text()
+        a, b = map(float, re.match(r'A ([-\d.e+]+) s · B ([-\d.e+]+) s', first).groups())
+        self.assertAlmostEqual(a, changes[1], places=3); self.assertAlmostEqual(b, changes[3], places=3)
+        cells = self.page.locator('#l .turbo-sse-measure tbody td').all_inner_texts()
+        self.assertEqual(cells[:4], ['B2', 'B2', '2', '2'], cells)  # At A, at B, changes, distinct values
+        # Export view covers A to B and starts with the value held at A.
+        rows = self.export_files(self.page.locator('#l [data-action="Export view"]').click)['s01-State.csv']
+        self.assertEqual([r['value'] for r in rows if r['kind'] == 'value'], ['B2', 'C3', 'B2'])
+        self.assertIn('bus lane', self.export_text)
+
     def test_cut_off_key_legend_fades_and_shows_in_full_on_hover(self):
         self.open('<div id="n" data-sse-graph data-sse-event="v" style="width:520px"></div>'
                   '<div id="w" data-sse-graph data-sse-event="v" style="width:1100px"></div>')

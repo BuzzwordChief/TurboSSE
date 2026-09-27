@@ -131,8 +131,14 @@ class Handler(BaseHTTPRequestHandler):
                     send("uptime", "{:.3f}".format(uptime))
                 temperature = 23.6 + 2 * math.sin(uptime / 8)
                 send("temperature", "{:.2f}".format(temperature))
+                # Discrete signals: the controller state follows the speed cycle, the status register steps
+                # through a few values with a burst of rapid changes every 20 s, and the pump runs while it is warm.
+                phase = math.sin(uptime / 2)
+                state = "RUN" if phase > .7 else "IDLE" if phase < -.7 else "RAMP UP" if math.cos(uptime / 2) > 0 else "RAMP DOWN"
+                register = 0x1000 + tick % 8 if int(uptime) % 20 == 10 else (0x0000, 0xf23a, 0x0003, 0x8001)[int(uptime / 3) % 4]
                 send("telemetry", json.dumps({"outlet": round(22.8 + 1.6 * math.sin((uptime - 2) / 8), 2),
-                    "rpm": int(1450 + 60 * math.sin(uptime / 2)), "voltage": round(12.4 + .1 * math.cos(uptime / 4), 3)}, separators=(",", ":")))
+                    "rpm": int(1450 + 60 * phase), "voltage": round(12.4 + .1 * math.cos(uptime / 4), 3),
+                    "state": state, "status": register, "pump": temperature > 24}, separators=(",", ":")))
                 if tick % 5 == 0:
                     send("log", "sample {}: temperature {:.2f} °C\n".format(tick, temperature))
                     send("diagnostic", "uptime={:.1f}s free_heap=32768".format(uptime))

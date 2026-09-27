@@ -1,4 +1,6 @@
 """Exercise the actual Python 3.9 example and its application-owned transforms."""
+import csv
+import io
 from pathlib import Path
 import threading
 import unittest
@@ -72,8 +74,8 @@ class DemoTests(unittest.TestCase):
                     self.assertAlmostEqual(edges[2], edges[0], delta=1, msg=(width, edges))
                     self.assertAlmostEqual(edges[3], edges[1], delta=1, msg=(width, edges))
                     self.assertLessEqual(edges[4], 1920)
-                    # Rotated y tick labels keep the y-axis gutter narrow.
-                    self.assertTrue(all(int(left[:-2]) <= 40 for left in page.evaluate('[...document.querySelectorAll(".turbo-sse-tools")].map(t => t.style.left)')), width)
+                    # Rotated y tick labels keep the y-axis gutter narrow; it widens only for the lane names.
+                    self.assertTrue(all(int(left[:-2]) <= 72 for left in page.evaluate('[...document.querySelectorAll(".turbo-sse-tools")].map(t => t.style.left)')), width)
                     # The plot band stays one row, so it takes little from the fixed-height plot area.
                     self.assertTrue(all(h <= 24 for h in page.evaluate('[...document.querySelectorAll(".turbo-sse-tools")].map(t => t.offsetHeight)')), width)
                     page.close()
@@ -101,9 +103,13 @@ class DemoTests(unittest.TestCase):
                     page.locator(".turbo-sse-export").click()
                 with zipfile.ZipFile(archive.value.path()) as z:
                     self.assertIsNone(z.testzip())
-                    self.assertEqual(z.namelist(), ["export.txt", "raw-events.csv", "s01-Inlet-temperature.csv",
-                                                    "s02-Outlet-temperature.csv", "s03-Motor-speed.csv", "s04-Supply-voltage.csv"])
+                    self.assertEqual(z.namelist(), ["export.txt", "raw-events.csv", "s01-Inlet-temperature.csv", "s02-Outlet-temperature.csv",
+                                                    "s03-Pump.csv", "s04-Status.csv", "s05-Motor-speed.csv", "s06-Controller.csv", "s07-Supply-voltage.csv"])
                     self.assertIn("diagnostic", z.read("raw-events.csv").decode("utf-8"))
+                    # Lane files list the values held; the controller lane starts in one of its four states.
+                    controller = list(csv.DictReader(io.StringIO(z.read("s06-Controller.csv").decode("utf-8"))))
+                    self.assertIn(controller[0]["value"], ("IDLE", "RAMP UP", "RUN", "RAMP DOWN"))
+                    self.assertIn("lane", z.read("export.txt").decode("utf-8"))
                 expect(page.locator(".turbo-sse-uptime")).to_contain_text("Uptime ≈")
                 self.assertEqual(errors, [])
             finally:

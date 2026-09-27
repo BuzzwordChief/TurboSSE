@@ -12,3 +12,8 @@ window.volts_to_millivolts = function (value) {
 window.numeric_millivolts = function (value) {
   return Number(value) * 1000;
 };
+
+// Shows a status register as a 16-bit hexadecimal value; discrete lanes use the text as the value.
+window.hex16 = function (value) {
+  return "0x" + (Number(value) & 0xffff).toString(16).padStart(4, "0");
+};

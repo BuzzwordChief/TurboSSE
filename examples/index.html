@@ -15,6 +15,7 @@
 <body data-sse-connect="/events" data-sse-events="diagnostic" data-sse-timeout="30000"
       data-sse-uptime-event="uptime" data-sse-graph-bytes="1048576">
   <main>
+
     <header>
       <h1>Measurement bench</h1>
       <p>Device 01. Live thermal response, motor speed, and supply voltage.</p>
@@ -40,20 +41,35 @@
       <div id="thermal-plot" data-sse-graph data-sse-title="Thermal response" data-sse-sync="bench" data-sse-window="60">
         <span data-sse-event="temperature" data-sse-label="Inlet temperature" data-sse-unit="°C">—</span>
         <span data-sse-event="telemetry" data-sse-json="/outlet" data-sse-label="Outlet temperature" data-sse-unit="°C">—</span>
+        <span data-sse-event="telemetry" data-sse-json="/pump" data-sse-discrete="logic" data-sse-label="Pump">—</span>
       </div>
     </section>
+
     <section>
-      <div id="speed-plot" data-sse-graph data-sse-sync="bench" data-sse-event="telemetry"
-           data-sse-json="/rpm" data-sse-label="Motor speed" data-sse-unit="rpm"></div>
-      <div id="voltage-plot" data-sse-graph data-sse-sync="bench" data-sse-event="telemetry"
-           data-sse-json="/voltage" data-sse-transform="numeric_millivolts" data-sse-label="Supply voltage" data-sse-unit="mV"></div>
+      <div id="speed-plot" data-sse-graph data-sse-title="Motor speed" data-sse-sync="bench">
+        <span data-sse-event="telemetry" data-sse-json="/rpm" data-sse-label="Motor speed" data-sse-unit="rpm">—</span>
+        <span data-sse-event="telemetry" data-sse-json="/state" data-sse-discrete data-sse-label="Controller">—</span>
+      </div>
     </section>
+
+    <section>
+      <div id="voltage-plot" data-sse-graph data-sse-sync="bench" data-sse-event="telemetry" data-sse-json="/voltage" 
+          data-sse-transform="numeric_millivolts" data-sse-label="Supply voltage" data-sse-unit="mV"></div>
+    </section>
+
+    <section>
+      <div id="register-plot" data-sse-graph data-sse-title="Status register" data-sse-sync="bench" data-sse-event="telemetry"
+          data-sse-json="/status" data-sse-transform="hex16" data-sse-discrete data-sse-label="Status"></div>
+    </section>
+
     <details>
       <summary>Original payloads and device log</summary>
       <section><h3>Latest telemetry payload</h3><pre data-sse-event="telemetry">Waiting for telemetry…</pre></section>
       <section><h3>Device log</h3><pre data-sse-event="log" data-sse-swap="append" data-sse-limit="500"></pre></section>
     </details>
+
     <footer>Export All downloads one ZIP with the original retained events, a separate CSV file for each series, and an export.txt describing them. Older graph history is summarized when its memory budget fills; extrema and statistics remain available. Uptime and restart markers are estimates.</footer>
+
   </main>
 </body>
 </html>

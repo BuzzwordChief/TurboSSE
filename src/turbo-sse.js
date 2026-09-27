@@ -289,6 +289,18 @@
     return magnitude && (magnitude >= 1e6 || magnitude < .001) ? value.toExponential(4).replace(/\.?0+e/, "e") : String(Number(value.toPrecision(5)));
   };
   const put = (node, text) => { if (node.textContent !== text) node.textContent = text; };
+  // Discrete lanes: each value's color comes from a hash of its text, so a value looks the same everywhere.
+  const LANE = 20;
+  const tint = (text, light) => {
+    let hash = 2166136261;
+    for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
+    return `hsl(${(hash >>> 0) % 360},${light ? "70%,88%" : "45%,35%"})`;
+  };
+  // Shorten text with an ellipsis to fit a width in pixels; empty when nothing fits.
+  const clip = (ctx, text, room) => {
+    const width = ctx.measureText(text).width, keep = Math.floor(text.length * room / width) - 1;
+    return width <= room ? text : keep > 0 ? text.slice(0, keep) + "…" : "";
+  };
   function make(tag, className, text, parent) {
     const node = document.createElement(tag);
     node.className = className;
@@ -317,7 +329,8 @@
       this.host = host; this.sources = sources; this.view = view; this.hooks = hooks;
       this.min = option(host, "y-min", null); this.max = option(host, "y-max", null);
       if (this.min !== null && this.max !== null && this.min >= this.max) throw new Error("Graph y-min must be below y-max");
-      this.hidden = new Set(); this.top = 24; this.left = 64; this.width = this.height = 1;
+      this.hidden = new Set(); this.top = 24; this.left = 64; this.width = this.height = this.span = 1;
+      this.lanes = sources.filter(c => c.lane); this.series = sources.filter(c => !c.lane);
       this.abort = new AbortController();
       const listen = (node, name, fn, opts = {}) => node.addEventListener(name, fn, {...opts, signal: this.abort.signal});
       const title = attr(host, "title") || attr(host, "label") || sources.map(c => c.label).join(", ");
@@ -350,6 +363,11 @@
       this.canvas.tabIndex = 0;
       this.canvas.setAttribute("role", "img");
       this.canvas.setAttribute("aria-label", this.element.getAttribute("aria-label") + ". Click to interact. " + [...hint.children].map(e => e.textContent).join("; ") + "; L live; F fit.");
+      // The gutter fits the unit and the lane names. Lanes add rows below the numeric area, or make up the whole plot.
+      const pen = this.canvas.getContext("2d"); pen.font = "10px arial, helvetica, sans-serif";
+      this.unit = this.series.length ? this.series[0].unit : "";
+      this.need = Math.ceil(Math.max(18, pen.measureText(this.unit).width + 8, ...this.lanes.map(c => Math.min(120, pen.measureText(c.label).width) + 10)));
+      if (this.lanes.length) this.area.style.height = this.series.length ? `calc(var(--turbo-sse-height, 220px) + ${this.lanes.length * LANE}px)` : 60 + this.lanes.length * LANE + "px";
       this.cursor = make("div", "turbo-sse-cursor", undefined, this.area);
       this.horizontal = make("div", "turbo-sse-cross-y", undefined, this.area);
       this.selection = make("div", "turbo-sse-selection", undefined, this.area);
@@ -396,21 +414,20 @@
         const was = this.activate(); this.canvas.focus();
         if (!was) return;
         this.canvas.setPointerCapture(event.pointerId);
-        const t = this.time(event);
+        const t = this.track(event);
         this.mode = event.button === 2 ? "Zoom" : event.shiftKey ? "Measure" : "Pan";
         this.drag = {x: event.clientX, y: event.clientY, t, end: t, lo: view.lo, hi: view.hi, live: view.live, a: view.a, b: view.b, fresh: view.a === null || view.b !== null};
         this.save(); view.live = false; hooks.invalidate();
-        if (this.mode === "Measure") { if (this.drag.fresh) view.a = t; view.b = null; }
+        if (this.mode === "Measure") { if (this.drag.fresh) view.a = this.snap(t); view.b = null; }
       });
       listen(this.canvas, "pointermove", event => {
-        const t = this.time(event); view.cursor = t;
-        this.cursorY = Math.max(this.top, Math.min(this.top + this.height, event.clientY - this.canvas.getBoundingClientRect().top));
+        const t = this.track(event);
         if (this.drag) {
           const d = this.drag;
           if (this.mode === "Pan") {
             const shift = (event.clientX - d.x) * (d.hi - d.lo) / this.width;
             this.setRange(d.lo - shift, d.hi - shift, false);
-          } else if (this.mode === "Measure") { view.b = t; hooks.invalidate(); }
+          } else if (this.mode === "Measure") { view.b = this.snap(t); hooks.invalidate(); }
           else { d.end = t; hooks.invalidate(); }
         }
         hooks.cursor(view);
@@ -418,26 +435,26 @@
       listen(this.canvas, "pointerup", event => {
         if (!this.drag) return;
         const d = this.drag, t = this.time(event), moved = Math.abs(event.clientX - d.x) > 3; this.drag = null;
-        if (this.mode === "Measure") view.b = d.fresh && !moved ? null : t;
+        if (this.mode === "Measure") view.b = d.fresh && !moved ? null : this.snap(t);
         else if (this.mode === "Zoom" && moved) {
-          if (event.shiftKey && Math.abs(event.clientY - d.y) > 3) {
+          if (event.shiftKey && this.series.length && Math.abs(event.clientY - d.y) > 3) {
             const rect = this.canvas.getBoundingClientRect();
             this.y = [this.value(Math.max(d.y, event.clientY) - rect.top), this.value(Math.min(d.y, event.clientY) - rect.top)];
           }
           this.setRange(Math.min(d.t, t), Math.max(d.t, t), false);
-        } else if (!moved && event.pointerType === "touch") { if (d.fresh) { view.a = t; view.b = null; } else view.b = t; }
+        } else if (!moved && event.pointerType === "touch") { if (d.fresh) { view.a = this.snap(t); view.b = null; } else view.b = this.snap(t); }
         else if (!moved) { Object.assign(view, {lo: d.lo, hi: d.hi, live: d.live}); view.history.pop(); }
         hooks.invalidate();
       });
       listen(this.canvas, "pointercancel", () => { this.cancel(); });
-      listen(this.canvas, "pointerleave", () => { if (!this.drag) { view.cursor = null; this.cursorY = null; hooks.cursor(view); } });
+      listen(this.canvas, "pointerleave", () => { if (!this.drag) { view.cursor = this.cursorY = this.lane = null; hooks.cursor(view); } });
       listen(document, "keydown", event => {
         if (!this.active || event.ctrlKey || event.metaKey || event.altKey) return;
         const key = event.key.toLowerCase(), span = view.hi - view.lo, center = view.cursor === null ? (view.lo + view.hi) / 2 : view.cursor;
         if (["arrowleft", "arrowright", "+", "=", "-", "a", "b", "l", "f", "escape"].includes(key)) event.preventDefault();
         if (key === "arrowleft" || key === "arrowright") this.setRange(view.lo + span * (key === "arrowleft" ? -.1 : .1), view.hi + span * (key === "arrowleft" ? -.1 : .1));
         if (["+", "=", "-"].includes(key)) this.zoom(center, key === "-" ? 1.25 : .8);
-        if (key === "a" || key === "b") { if (view.live) this.live(false); view[key] = center; }
+        if (key === "a" || key === "b") { if (view.live) this.live(false); view[key] = this.snap(center); }
         if (key === "escape") { this.cancel(); view.a = view.b = null; }
         if (key === "l") this.live(!view.live);
         if (key === "f") this.controls.querySelector("[data-action=Fit]").click();
@@ -484,6 +501,18 @@
       Object.assign(this.view, {lo, hi: Math.max(hi, lo + .0001), live: false});
       this.hooks.invalidate();
     }
+    track(event) {
+      // Remember the pointer's time, its y position over the numeric area, and the lane under it.
+      const y = event.clientY - this.canvas.getBoundingClientRect().top, bottom = this.top + this.height;
+      this.cursorY = this.series.length && y <= bottom ? Math.max(this.top, y) : null;
+      this.lane = this.lanes[Math.floor((y - bottom) / LANE)];
+      return this.view.cursor = this.time(event);
+    }
+    snap(t) {
+      // A marker placed over a lane sticks to that lane's nearest change within 5 px.
+      const p = this.lane && this.lane.history.nearest(t);
+      return p && !p.summary && Math.abs(this.x(p.a[0]) - this.x(t)) <= 5 ? p.a[0] : t;
+    }
     time(event) { const rect = this.canvas.getBoundingClientRect(); return this.view.lo + Math.max(0, Math.min(this.width, event.clientX - rect.left - this.left)) / this.width * (this.view.hi - this.view.lo); }
     x(t) { return this.left + (t - this.view.lo) / (this.view.hi - this.view.lo) * this.width; }
     value(y) { const f = Math.max(0, Math.min(1, (y - this.top) / this.height)); return this.yMax * (1 - f) + this.yMin * f; }
@@ -495,20 +524,27 @@
       this.selection.hidden = Math.max(a, b) < this.view.lo || Math.min(a, b) > this.view.hi;
       if (this.selection.hidden) return;
       const x = Math.max(this.left, Math.min(this.x(a), this.x(b))), end = Math.min(this.left + this.width, Math.max(this.x(a), this.x(b)));
-      this.selection.style.cssText = `left:${x}px;top:${this.top}px;width:${Math.max(0,end-x)}px;height:${this.height}px`;
+      this.selection.style.cssText = `left:${x}px;top:${this.top}px;width:${Math.max(0,end-x)}px;height:${this.span}px`;
     }
     inspect() {
       const g = this.view, t = g.cursor;
       this.cursor.hidden = t === null || t < g.lo || t > g.hi;
-      if (!this.cursor.hidden) this.cursor.style.cssText = `left:${this.x(t)}px;top:${this.top}px;height:${this.height}px`;
+      if (!this.cursor.hidden) this.cursor.style.cssText = `left:${this.x(t)}px;top:${this.top}px;height:${this.span}px`;
       this.horizontal.hidden = this.cursor.hidden || this.cursorY == null;
       if (!this.horizontal.hidden) this.horizontal.style.cssText = `left:${this.left}px;top:${this.cursorY}px;width:${this.width}px`;
       this.sources.forEach((c, i) => {
-        const point = c.history.nearest(t === null ? g.hi : t, t === null), a = point && point.a;
+        const point = c.history.nearest(t === null ? g.hi : t, t === null || !!c.lane), a = point && point.a;
+        if (c.lane) {
+          const text = !a ? "—" : point.summary ? "…" : a[8] >= 0 ? c.values[a[8]] : "—", style = this.values[i].parentElement.style;
+          const color = c.lane == "bus" && c.index.has(text) ? tint(text) : style.getPropertyValue("--series-color");
+          put(this.values[i], text);
+          if (style.getPropertyValue("--series-color") !== color) style.setProperty("--series-color", color);
+          return;
+        }
         put(this.values[i], !a || !a[5] ? "—" : (point.summary ? `${format(a[6])}…${format(a[7])} (mean ${format(a[8])}, n=${a[5]})` : format(a[8])) + (c.unit ? " " + c.unit : ""));
       });
       if (t !== null) {
-        const point = this.sources[0].history.nearest(t), a = point && point.a;
+        const s = this.series[0] || this.sources[0], point = s.history.nearest(t, !!s.lane), a = point && point.a;
         put(this.readout, "Elapsed " + format(t) + " s" + (this.cursorY == null ? "" : " · y " + format(this.value(this.cursorY))) + (!a ? "" : point.summary ? ` · summary ${format(a[0])}–${format(a[1])} s` :
           ` · sample ${format(a[0])} s · uptime ${Number.isFinite(a[2]) ? "≈" + format(a[2]) + " s" : "— (unsynchronized)"}`));
       } else put(this.readout, this.baseReadout || "Waiting for data");
@@ -516,14 +552,17 @@
     draw() {
       if (!this.host.isConnected || !this.area.clientWidth || !this.area.getClientRects().length) return;
       const w = this.area.clientWidth, h = this.area.clientHeight, dpr = Math.min(3, window.devicePixelRatio || 1), g = this.view;
-      this.height = Math.max(1, h - this.top - 20); const T = this.top, B = h - 20;
+      // Lanes sit between the numeric area and the x axis. A plot of lanes only keeps a 14 px strip for marker labels.
+      const T = this.top, B = h - 20, now = this.hooks.now();
+      this.height = this.series.length ? Math.max(1, B - T - this.lanes.length * LANE) : 14; this.span = B - T;
+      const Y = T + this.height;
       if (this.canvas.width !== Math.round(w * dpr) || this.canvas.height !== Math.round(h * dpr)) { this.canvas.width = Math.round(w * dpr); this.canvas.height = Math.round(h * dpr); }
       const ctx = this.canvas.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
       let low = Infinity, high = -Infinity, retained = 0;
       for (const c of this.sources) {
         if (this.hidden.has(c)) continue;
         const a = c.history.range(g.lo, g.hi);
-        if (a && a[5]) { low = Math.min(low, a[6]); high = Math.max(high, a[7]); retained += a[5]; }
+        if (a && a[5]) { if (!c.lane) { low = Math.min(low, a[6]); high = Math.max(high, a[7]); } retained += a[5]; }
       }
       if (!Number.isFinite(low)) { low = 0; high = 1; }
       const magnitude = Math.max(Math.abs(low), Math.abs(high)) || 1;
@@ -535,33 +574,32 @@
       const y = v => T + (this.yMax / scale - v / scale) / (this.yMax / scale - this.yMin / scale) * this.height;
       const ink = getComputedStyle(this.area).color;
       ctx.font = "10px arial, helvetica, sans-serif"; ctx.fillStyle = ctx.strokeStyle = ink; ctx.lineWidth = 1;
-      ctx.textAlign = "right";
       const rule = (x0, y0, x1, y1, faint) => { ctx.globalAlpha = faint ? .12 : 1; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); ctx.globalAlpha = 1; };
-      // Y tick labels read bottom to top, so the gutter needs only one line of text; it also fits the unit label
-      // drawn above the axis. Long labels get fewer ticks instead of overlapping.
-      const unit = this.sources[0].unit, labelled = count => ticks(this.yMin, this.yMax, count).map(v => [y(v), format(v)]);
-      let yTicks = labelled(5);
-      const longest = Math.max(0, ...yTicks.map(t => ctx.measureText(t[1]).width));
-      if (this.height / 5 < longest + 12) yTicks = labelled(Math.max(2, Math.floor(this.height / (longest + 12))));
-      const L = this.left = Math.ceil(Math.max(18, ctx.measureText(unit).width + 8));
+      const L = this.left = Math.max(this.need, g.gutter || 0), end = w - 16;
       this.width = Math.max(1, w - L - 16);
       const band = L + 2 + "px"; if (this.tools.style.left !== band) this.tools.style.left = band;
       ctx.textAlign = "center";
-      for (const [at, label] of yTicks) {
-        const p = Math.round(at) + .5, half = ctx.measureText(label).width / 2;
-        rule(L, p, w - 16, p, true); rule(L - 4, p, L, p);
-        ctx.save(); ctx.translate(L - 6, Math.min(B - half, Math.max(T + half, p))); ctx.rotate(-Math.PI / 2); ctx.fillText(label, 0, 0); ctx.restore();
+      if (this.series.length) {
+        // Y tick labels read bottom to top, so the gutter needs only one line of text. Long labels get fewer ticks.
+        const labelled = count => ticks(this.yMin, this.yMax, count).map(v => [y(v), format(v)]);
+        let yTicks = labelled(5);
+        const longest = Math.max(0, ...yTicks.map(t => ctx.measureText(t[1]).width));
+        if (this.height / 5 < longest + 12) yTicks = labelled(Math.max(2, Math.floor(this.height / (longest + 12))));
+        for (const [at, label] of yTicks) {
+          const p = Math.round(at) + .5, half = ctx.measureText(label).width / 2;
+          rule(L, p, end, p, true); rule(L - 4, p, L, p);
+          ctx.save(); ctx.translate(L - 6, Math.min(Y - half, Math.max(T + half, p))); ctx.rotate(-Math.PI / 2); ctx.fillText(label, 0, 0); ctx.restore();
+        }
       }
-      ctx.textAlign = "center";
-      const title = "Elapsed time (s)", end = w - 16, room = end - ctx.measureText(title).width - 8;
+      const title = "Elapsed time (s)", room = end - ctx.measureText(title).width - 8;
       for (const v of ticks(g.lo, g.hi, Math.max(2, this.width / 90))) {
         const p = Math.round(this.x(v)) + .5, label = format(v); rule(p, T, p, B, true); rule(p, B, p, B + 4);
         if (p + ctx.measureText(label).width / 2 < room) ctx.fillText(label, p, h - 5);
       }
       rule(L + .5, T, L + .5, B + .5); rule(L, B + .5, end, B + .5);
-      ctx.textAlign = "right"; ctx.fillText(title, end, h - 5); ctx.textAlign = "left"; ctx.fillText(unit, 4, T - 4);
+      ctx.textAlign = "right"; ctx.fillText(title, end, h - 5); ctx.textAlign = "left"; ctx.fillText(this.unit, 4, T - 4);
       ctx.save(); ctx.beginPath(); ctx.rect(L, T, this.width, this.height); ctx.clip();
-      for (const c of this.sources) {
+      for (const c of this.series) {
         if (this.hidden.has(c)) continue;
         const color = palette[(c.id - 1) % palette.length]; ctx.strokeStyle = ctx.fillStyle = color; ctx.lineWidth = 1.3; ctx.beginPath();
         let connected = false;
@@ -583,32 +621,77 @@
         });
         ctx.stroke();
       }
+      ctx.restore();
+      // Lanes: bus lanes draw labelled segments with slanted ends at each change; logic lanes draw a high/low line.
+      // Changes too close together to draw show as a gray block with their count.
+      ctx.save(); ctx.lineWidth = 1; ctx.textBaseline = "middle";
+      this.lanes.forEach((c, i) => {
+        const top = Y + i * LANE + 2, mid = top + 8, bottom = top + 16, color = palette[(c.id - 1) % palette.length];
+        ctx.font = "10px arial, helvetica, sans-serif"; ctx.textAlign = "right"; ctx.fillStyle = ctx.strokeStyle = ink;
+        ctx.fillText(clip(ctx, c.label, L - 10), L - 6, mid); rule(L, top - 1.5, end, top - 1.5, true);
+        if (this.hidden.has(c)) return;
+        ctx.save(); ctx.beginPath(); ctx.rect(L + 1, top - 1, this.width, LANE - 2); ctx.clip();
+        ctx.font = "11px arial, helvetica, sans-serif"; ctx.textAlign = "center";
+        let start = null, value = -1;
+        const close = t => {
+          const x0 = Math.max(L - 4, this.x(start)), x1 = Math.min(end + 4, this.x(t)), text = c.values[value];
+          if (start === null || value < 0 || x1 - x0 < 1) return;
+          if (c.lane == "logic") {
+            const on = text == "1", level = on ? top + .5 : bottom - .5;
+            ctx.strokeStyle = ctx.fillStyle = color;
+            if (on) { ctx.globalAlpha = .15; ctx.fillRect(x0, top, x1 - x0, 16); ctx.globalAlpha = 1; }
+            ctx.beginPath(); ctx.moveTo(x0, top); ctx.lineTo(x0, bottom); ctx.moveTo(x0, level); ctx.lineTo(x1, level); ctx.stroke();
+            return;
+          }
+          const slant = Math.min(3, (x1 - x0) / 2), a = Math.max(x0, L), b = Math.min(x1, end), label = clip(ctx, text, b - a - 8);
+          ctx.beginPath(); ctx.moveTo(x0, mid); ctx.lineTo(x0 + slant, top); ctx.lineTo(x1 - slant, top); ctx.lineTo(x1, mid); ctx.lineTo(x1 - slant, bottom); ctx.lineTo(x0 + slant, bottom); ctx.closePath();
+          ctx.fillStyle = tint(text, 1); ctx.fill(); ctx.strokeStyle = tint(text); ctx.stroke();
+          if (label) { ctx.fillStyle = "#000"; ctx.fillText(label, (a + b) / 2, mid); }
+        };
+        const busy = (t0, t1, n, summary) => {
+          const x0 = this.x(t0), x1 = Math.max(x0 + 2, this.x(t1)), label = clip(ctx, n + " changes" + (summary ? ", summarized" : ""), x1 - x0 - 8);
+          ctx.fillStyle = "#d8d8d8"; ctx.strokeStyle = "#808080"; ctx.fillRect(x0, top, x1 - x0, 16); ctx.strokeRect(x0 + .5, top + .5, x1 - x0 - 1, 15);
+          if (label) { ctx.fillStyle = "#000"; ctx.fillText(label, (x0 + x1) / 2, mid); }
+        };
+        // The value in effect at the left edge comes from the last change before it.
+        const p = c.history.nearest(g.lo, true);
+        if (p && p.a[0] < g.lo && !(p.summary && p.a[1] >= g.lo)) { start = p.summary ? p.a[1] : p.a[0]; value = p.a[p.summary ? 11 : 8]; }
+        c.history.query(g.lo, g.hi, Math.min(2048, this.width), (a, summary) => {
+          close(a[0]);
+          if (a[15] === 1 && !summary) { start = a[0]; value = a[10]; }
+          else { busy(a[0], a[1], a[15], summary); start = a[1]; value = a[11]; }
+        });
+        close(Math.min(g.hi, now));
+        ctx.restore();
+      });
+      ctx.restore();
       const d = this.drag, z = d && this.mode == "Zoom";
+      ctx.save(); ctx.beginPath(); ctx.rect(L, T, this.width, this.span); ctx.clip();
       ctx.strokeStyle = ctx.fillStyle = "#d0021b"; ctx.setLineDash([4, 3]);
       for (const marker of this.hooks.restarts()) if (marker.time >= g.lo && marker.time <= g.hi) {
         const x = this.x(marker.time); ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, B); ctx.stroke(); ctx.fillText("≈ restart", x + 4, T + 12);
       }
-      // Label each marker on the outer side of the measured interval.
+      // Label each marker on the outer side of the measured interval, at the bottom of the numeric area.
       ctx.fillStyle = "#b07000"; ctx.font = "bold 11px arial, sans-serif";
       if (!z) for (const [name, t, other] of [["A", g.a, g.b], ["B", g.b, g.a]]) if (t !== null) {
         const x = this.x(t), room = ctx.measureText(name).width + 3;
-        const left = other !== null && t < other ? x - room > L : x + room > w - 16;
-        ctx.textAlign = left ? "right" : "left"; ctx.fillText(name, x + (left ? -3 : 3), B - 4);
+        const left = other !== null && t < other ? x - room > L : x + room > end;
+        ctx.textAlign = left ? "right" : "left"; ctx.fillText(name, x + (left ? -3 : 3), Y - 4);
       }
       ctx.restore(); ctx.setLineDash([]);
-      if (!retained) { ctx.textAlign = "center"; ctx.fillStyle = ink; ctx.fillText("Waiting for valid data", L + this.width / 2, h / 2); }
+      if (!retained && !this.lanes.some(c => c.last >= 0)) { ctx.textAlign = "center"; ctx.fillStyle = ink; ctx.fillText("Waiting for valid data", L + this.width / 2, h / 2); }
       this.liveBox.checked = g.live;
       this.baseReadout = (g.live ? "Live" : "Inspecting") + ` · ${format(g.lo)}–${format(g.hi)} s · ${retained} samples` +
         (this.sources.some(c => c.history.compacted) ? " · older history summarized" : "") +
         (this.sources.some(c => c.history.evicted) ? " · oldest coverage expired" : "");
       this.band(z ? d.t : g.a, z ? d.end : g.b, z);
       this.inspect();
-      // Measurements are an A/B line and a table with one row per series. The row count never changes,
+      // Measurements are an A/B line and tables with one row per series. The row count never changes,
       // so measuring never shifts the page.
       const both = g.a !== null && g.b !== null, lo = Math.min(g.a, g.b), hi = Math.max(g.a, g.b), dt = hi - lo;
       const first = both ? `A ${format(g.a)} s · B ${format(g.b)} s · Δt ${format(dt)} s · 1/Δt ${format(dt ? 1/dt : NaN)} Hz` :
         g.a !== null || g.b !== null ? `A ${format(g.a ?? NaN)} s · B ${format(g.b ?? NaN)} s` : "Shift-drag, or press A and B, to measure an interval";
-      const rows = this.sources.map(c => {
+      const rows = this.series.map(c => {
         const a = both && c.history.range(lo, hi), row = [c.label + (c.unit ? " (" + c.unit + ")" : ""), both ? 0 : "—", "—", "—", "—", "—", "—", "—", "—", "—"];
         if (!a || !a[5]) return row;
         const sd = a[9], left = c.history.nearest(lo), right = c.history.nearest(hi);
@@ -621,13 +704,35 @@
         if (a[0] < lo || a[1] > hi) row[0] += ` · summary ${format(a[0])}–${format(a[1])} s`;
         return row;
       });
-      const text = JSON.stringify([first, rows]);
+      // Lanes: the values held at A and B, the changes between them, the distinct values, and the value held longest.
+      // Summarized history makes the counts lower bounds.
+      const at = (c, t) => { const p = c.history.nearest(t, true); return !p ? "—" : p.summary ? "…" : p.a[8] >= 0 ? c.values[p.a[8]] : "—"; };
+      const lanes = this.lanes.map(c => {
+        if (!both) return [c.label, "—", "—", "—", "—", "—"];
+        const time = new Map(), p = c.history.nearest(lo, true);
+        let from = lo, value = p && !p.summary ? p.a[8] : -1, changes = 0, more = "", best = -1, longest = 0;
+        const hold = t => { if (value >= 0 && t > from) time.set(value, (time.get(value) || 0) + t - from); from = Math.max(from, t); };
+        for (const {a, summary} of c.history.rows(lo, hi)) {
+          hold(a[0]);
+          if (summary) { more = "≥"; changes += a[15]; from = Math.max(from, a[1]); value = a[11]; }
+          else { changes += a[0] > lo; value = a[8]; }
+        }
+        hold(Math.min(hi, now));
+        for (const [v, held] of time) if (held > longest) { best = v; longest = held; }
+        return [c.label, at(c, g.a), at(c, g.b), more + changes, more + time.size, best < 0 ? "—" : `${c.values[best]} ${format(longest)} s (${Math.round(100 * longest / (dt || 1))}%)`];
+      });
+      const tables = [];
+      if (this.series.length) tables.push([["Series", "n", "min", "max", "p-p", "mean", "RMS", "σ", "Δy", "slope /s"], rows]);
+      if (this.lanes.length) tables.push([["Lane", "At A", "At B", "Changes", "Distinct", "Longest"], lanes]);
+      const text = JSON.stringify([first, tables]);
       if (text !== this.rows) {
         this.rows = text;
-        const table = make("table", ""), head = make("tr", "", undefined, make("thead", "", undefined, table)), body = make("tbody", "", undefined, table);
-        for (const name of ["Series", "n", "min", "max", "p-p", "mean", "RMS", "σ", "Δy", "slope /s"]) make("th", "", name, head);
-        for (const [name, ...cells] of rows) { const tr = make("tr", "", undefined, body); make("th", "", name, tr); for (const cell of cells) make("td", "", String(cell), tr); }
-        this.measure.replaceChildren(make("p", "", first), table);
+        this.measure.replaceChildren(make("p", "", first), ...tables.map(([names, cells]) => {
+          const table = make("table", ""), head = make("tr", "", undefined, make("thead", "", undefined, table)), body = make("tbody", "", undefined, table);
+          for (const name of names) make("th", "", name, head);
+          for (const [name, ...row] of cells) { const tr = make("tr", "", undefined, body); make("th", "", name, tr); for (const cell of row) make("td", "", String(cell), tr); }
+          return table;
+        }));
       }
     }
     destroy() { this.abort.abort(); this.observer.disconnect(); this.element.remove(); }
@@ -706,6 +811,7 @@
 
     function graphPoint(c, t, u, value) {
       const h = c.history;
+      if (c.lane) { if (!(value >= 0)) value = -1; if (value === c.last) return; c.last = value; }
       // Reserve only when a chunk/segment is about to grow. A busy channel can
       // use idle channels' space instead of prematurely reducing its history.
       if (!h.current || h.current.a[15] === BLOCK || h.current.a[4] !== clock.segment) shareBudget(h);
@@ -754,7 +860,7 @@
       let lo = Infinity, hi = -Infinity;
       for (const p of plots.values()) if (!view || p.view === view) for (const c of p.sources) {
         const a = c.history.range();
-        if (a) { lo = Math.min(lo, a[0]); hi = Math.max(hi, a[1]); }
+        if (a) { lo = Math.min(lo, a[0]); hi = Math.max(hi, c.last >= 0 ? (performance.now() - started) / 1000 : a[1]); }
       }
       return Number.isFinite(lo) ? [lo, hi] : [0, 1];
     }
@@ -791,6 +897,8 @@
           if (g.live) { const end = Math.max(r[1], (performance.now() - started) / 1000); g.lo = Math.max(r[0], end - g.window); g.hi = Math.max(g.lo + .001, end); }
           else if (g.hi < r[0]) { const span = g.hi - g.lo; g.lo = r[0]; g.hi = Math.max(g.lo + .001, Math.min(r[1], g.lo + span)); g.cursor = null; }
         }
+        for (const g of groups.values()) g.gutter = 0;
+        for (const p of plots.values()) p.view.gutter = Math.max(p.view.gutter, p.need);
         for (const p of plots.values()) {
           if (p.failed) continue;
           try { p.draw(); }
@@ -830,10 +938,27 @@
         if (c.tick === counts.received) return c.text;
         c.tick = counts.received;
         if (value === undefined) { c.text = undefined; return; }
-        const y = value === null ? NaN : numeric(value);
-        if (value !== null && !Number.isFinite(y)) counts.graphErrors++;
+        let y;
+        if (c.lane) {
+          // A lane's value is its text, at most 64 characters; logic lanes reduce it to 1 or 0. Missing, empty
+          // and unrecognized values leave a gap, as does a new value beyond the 1024 distinct values a lane keeps.
+          let text = value === null ? "" : normalize(value).slice(0, 64);
+          if (text && c.lane == "logic") {
+            const n = numeric(text);
+            text = n === n ? (n ? "1" : "0") : /^(true|on|high)$/i.test(text) ? "1" : /^(false|off|low)$/i.test(text) ? "0" : (counts.graphErrors++, "");
+          }
+          y = text ? c.index.get(text) : -1;
+          if (y === undefined) {
+            if (c.values.length < 1024) c.index.set(text, y = c.values.push(text) - 1);
+            else { counts.graphErrors++; y = -1; }
+          }
+          c.text = text || "—";
+        } else {
+          y = value === null ? NaN : numeric(value);
+          if (value !== null && !Number.isFinite(y)) counts.graphErrors++;
+          c.text = Number.isFinite(y) ? String(y) : "—";
+        }
         graphPoint(c, record.elapsed / 1000, uptime(elapsed), y);
-        c.text = Number.isFinite(y) ? String(y) : "—";
         invalidate();
         return c.text;
       };
@@ -924,13 +1049,15 @@
             if (windowSeconds <= 0) throw new Error("Graph window must be positive");
             const min = option(host, "y-min", null), max = option(host, "y-max", null);
             if (min !== null && max !== null && min >= max) throw new Error("Graph y-min must be below y-max");
-            const unit = attr(element, "unit") || "", key = JSON.stringify([name, path, fn, unit]);
+            const discrete = attr(element, "discrete"), lane = discrete === null ? "" : discrete === "" || discrete === "bus" ? "bus" : discrete === "logic" ? discrete : null;
+            if (lane === null) throw new Error("Invalid data-sse-discrete");
+            const unit = attr(element, "unit") || "", key = JSON.stringify([name, path, fn, unit, lane]);
             let c = nextChannels.get(key) || channels.get(key);
-            if (!c || c.transform !== transform) c = {id: ++serial, event: name, path: attr(element, "json") || "", fn: fn || "", transform, unit,
-              label: attr(element, "label") || name, history: new History(graphBudget - clockBudget), tick: -1};
+            if (!c || c.transform !== transform) c = {id: ++serial, event: name, path: attr(element, "json") || "", fn: fn || "", transform, unit, lane,
+              values: [], index: new Map(), label: attr(element, "label") || name, history: new History(graphBudget - clockBudget), tick: -1};
             if (!hosts.has(host)) hosts.set(host, []);
-            const series = hosts.get(host);
-            if (series.length && series[0].unit !== unit) throw new Error("Use synchronized panels for different units");
+            const series = hosts.get(host), first = series.find(s => !s.lane);
+            if (!lane && first && first.unit !== unit) throw new Error("Use synchronized panels for different units");
             if (!nextChannels.has(key) && (nextChannels.size + 1) * 4096 > graphBudget - clockBudget) throw new Error("Graph budget too small for series count");
             if (!nextChannels.has(key)) c.label = attr(element, "label") || name;
             nextChannels.set(key, c);
@@ -957,7 +1084,7 @@
           let plot = plots.get(host);
           if (plot && (plot.signature !== signature || plot.view !== view)) { plot.destroy(); plot = null; }
           if (!plot) plot = new Plot(host, series, view, {invalidate, extent, restarts: () => restarts,
-            cursor: g => { for (const p of plots.values()) if (p.view === g) p.inspect(); }, export: showExports});
+            cursor: g => { for (const p of plots.values()) if (p.view === g) p.inspect(); }, export: showExports, now: () => (performance.now() - started) / 1000});
           plot.signature = signature;
           nextPlots.set(host, plot);
         } catch (error) { configError(error); }
@@ -1085,7 +1212,10 @@
         check(sourceList.reduce((n, c) => n + c.history.bytes, 0));
         for (const c of sourceList) {
           const h = c.history.copy(lo, hi); memory += h.bytes;
-          snapshots.push({source: {id: c.id, label: c.label, event: c.event, path: c.path, fn: c.fn, unit: c.unit}, history: h});
+          // A lane also keeps the change before the interval, which sets the value held at its start.
+          const start = c.lane && c.history.nearest(lo, true);
+          snapshots.push({source: {id: c.id, label: c.label, event: c.event, path: c.path, fn: c.fn, unit: c.unit, lane: c.lane, values: c.values},
+            history: h, start: start && start.a[0] < lo ? {a: start.a.slice(), summary: start.summary} : null});
         }
         const markers = restarts.map(m => ({...m})).sort((a, b) => a.time - b.time);
         const encoder = new TextEncoder();
@@ -1115,6 +1245,8 @@
           memory -= raw.reduce((n, row) => n + row.bytes, 0); raw.length = 0;
         }
         const header = "series,event,json_pointer,transform,unit,kind,elapsed_start_s,elapsed_end_s,uptime_start_s,uptime_end_s,segment,value,count,min,max,mean,stddev,first,last,min_elapsed_s,max_elapsed_s,gaps,detected_elapsed_s";
+        const laneHeader = "series,event,json_pointer,transform,kind,elapsed_start_s,elapsed_end_s,uptime_start_s,uptime_end_s,segment,value,changes,first,last,detected_elapsed_s";
+        const until = (performance.now() - started) / 1000;
         for (const item of snapshots) {
           if (!valid()) return;
           const c = item.source, h = item.history, a = h.range(lo, hi), meta = [c.label, c.event, c.path, c.fn, c.unit];
@@ -1134,8 +1266,25 @@
             }
             while (index < relevant.length) yield markerRow(relevant[index++]);
           };
+          // Lane files have one row per value held, gap or summary; a value holds until the next change.
+          const laneRows = function* () {
+            let index = 0, prev = item.start;
+            const lane = [c.label, c.event, c.path, c.fn], text = v => v >= 0 ? c.values[v] : null;
+            const emit = function* (p, next) {
+              const b = p.a, end = next ? next.a[0] : Math.min(hi, until), later = next ? next.a[2] : null, v = b[p.summary ? 11 : 8];
+              if (p.summary) yield csvRow([...lane, "summary", b[0], b[1], b[2], b[3], b[4], null, b[15], text(b[10]), text(v), null]);
+              if (!p.summary || end > b[1]) yield csvRow([...lane, v >= 0 ? "value" : "gap", b[p.summary ? 1 : 0], end, b[p.summary ? 3 : 2], later, b[4], text(v), null, null, null, null]);
+            };
+            for (const point of h.rows(lo, hi)) {
+              while (index < relevant.length && relevant[index].time <= point.a[0]) yield csvRow([...lane, "restart", relevant[index].time, relevant[index].time, 0, 0, relevant[index].segment, null, null, null, null, relevant[index++].detected]);
+              if (prev) yield* emit(prev, point);
+              prev = {a: point.a.slice(), summary: point.summary};
+            }
+            if (prev) yield* emit(prev, null);
+            while (index < relevant.length) yield csvRow([...lane, "restart", relevant[index].time, relevant[index].time, 0, 0, relevant[index].segment, null, null, null, null, relevant[index++].detected]);
+          };
           const name = "s" + String(c.id).padStart(2, "0") + "-" + (c.label.replace(/[^a-z0-9_-]+/gi, "-").slice(0, 64) || "series") + ".csv";
-          await file(name, header, rows(), a ? `${a[5]} samples · ${format(a[0])}–${format(a[1])} s · samples/summaries explicitly identified` : "No retained samples");
+          await file(name, c.lane ? laneHeader : header, c.lane ? laneRows() : rows(), !a ? "No retained data" : c.lane ? `${a[15]} changes · ${format(a[0])}–${format(a[1])} s · ${c.lane} lane` : `${a[5]} samples · ${format(a[0])}–${format(a[1])} s · samples/summaries explicitly identified`);
           memory -= h.bytes; item.history = null;
         }
         if (valid()) {

@@ -85,6 +85,7 @@ kbd { padding: 0 3px; font: inherit; background: #fff; border: 1px solid #808080
 .turbo-sse-measure p { font-weight: 700; background: #e8e8d0; }
 .turbo-sse-measure { overflow-x: auto; }
 .turbo-sse-measure table { margin: 0; border-style: hidden; white-space: nowrap; }
+.turbo-sse-measure table + table { border-top: 1px solid #808080; }
 @media (hover: none) { .turbo-sse-tools > span { display: none; } }
 /* Last, so it overrides the page and topbar padding above. */
 @media (max-width: 600px) { main { padding: 4px 6px 12px; } .turbo-sse-bar { padding-inline: 6px; } h1 { font-size: 20px; } }
