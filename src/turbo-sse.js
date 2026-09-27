@@ -325,9 +325,11 @@
       this.element.setAttribute("aria-label", title);
       const header = make("header", "", undefined, this.element);
       make("strong", "", title, header);
+      // Plot controls sit in the header; the band above the data holds only the key legend.
+      this.controls = make("div", "", undefined, header); this.controls.setAttribute("role", "toolbar");
       make("span", "", [...new Set(sources.map(c => c.unit).filter(Boolean))].join(", "), header);
-      this.controls = make("div", "turbo-sse-tools");
-      const hint = make("div", "turbo-sse-hint", undefined, this.controls);
+      this.tools = make("div", "turbo-sse-tools");
+      const hint = make("div", "turbo-sse-hint", undefined, this.tools);
       for (const [keys, text] of [["Drag|←|→", "pan"], ["Wheel|+|−", "zoom"], ["Right-drag", "zoom range"], ["Shift|Drag", "measure"], ["A|B", "markers"], ["Esc", "clear"]]) {
         const item = make("span", "", undefined, hint);
         keys.split("|").forEach((key, i) => { if (i) item.append(keys[0] == "S" ? "+" : " "); make("kbd", "", key, item); });
@@ -341,7 +343,7 @@
         if (action == "Fit") make("kbd", "", "F", b);
       }
       this.area = make("div", "turbo-sse-area", undefined, this.element);
-      this.area.append(this.controls);
+      this.area.append(this.tools);
       this.canvas = make("canvas", "", undefined, this.area);
       this.canvas.tabIndex = 0;
       this.canvas.setAttribute("role", "img");
@@ -441,8 +443,8 @@
       });
       // A press or focus inside the plot activates it; anywhere else deactivates it.
       for (const type of ["pointerdown", "focusin"]) listen(document, type, event => this.activate(this.element.contains(event.target)));
-      this.observer = new ResizeObserver(() => { this.top = this.controls.offsetHeight + 6; hooks.invalidate(); });
-      this.observer.observe(this.area); this.observer.observe(this.controls);
+      this.observer = new ResizeObserver(() => { this.top = Math.max(16, this.tools.offsetHeight + 6); hooks.invalidate(); });
+      this.observer.observe(this.area); this.observer.observe(this.tools);
     }
     activate(on = true) {
       const was = this.active;

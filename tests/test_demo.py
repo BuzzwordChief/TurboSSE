@@ -35,6 +35,39 @@ class DemoTests(unittest.TestCase):
             self.assertEqual(response.readline(), b"event: log\n")
             self.assertIn(b"refreshing snapshot", response.readline())
 
+    def test_example_page_is_styled_by_turbo_sse_css_alone(self):
+        with urlopen(self.url + "/", timeout=3) as response:
+            html = response.read().decode("utf-8")
+        self.assertNotIn("demo.css", html)
+        self.assertNotIn(" class=", html)
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            try:
+                for width, columns in ((1100, 2), (390, 1)):
+                    page = browser.new_page(viewport={"width": width, "height": 900})
+                    page.goto(self.url)
+                    expect(page.locator(".turbo-sse-status")).to_have_text("Connected")
+                    expect(page.locator("#device-state")).to_have_text("Running")
+                    layout = page.evaluate("""() => {
+                        const [left, right] = [...document.querySelectorAll("main > section")].map(s => s.getBoundingClientRect());
+                        return {sideBySide: Math.abs(left.top - right.top) < 1 && right.left > left.right, stacked: right.top >= left.bottom,
+                                overflow: document.documentElement.scrollWidth > innerWidth,
+                                table: getComputedStyle(document.querySelector("table")).borderCollapse,
+                                caption: getComputedStyle(document.querySelector("caption")).backgroundColor,
+                                plotHeader: getComputedStyle(document.querySelector(".turbo-sse-plot > header")).backgroundColor,
+                                pre: getComputedStyle(document.querySelector("pre")).whiteSpace};
+                    }""")
+                    self.assertEqual(layout["sideBySide"], columns == 2, (width, layout))
+                    self.assertEqual(layout["stacked"], columns == 1, (width, layout))
+                    self.assertFalse(layout["overflow"], width)
+                    self.assertEqual(layout["table"], "collapse")
+                    self.assertEqual(layout["caption"], layout["plotHeader"])
+                    self.assertEqual(layout["pre"], "pre-wrap")
+                    self.assertEqual(page.locator("#thermal-plot + table caption").inner_text(), "Real-time values")
+                    page.close()
+            finally:
+                browser.close()
+
     def test_example_page_transforms_and_exports(self):
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch()

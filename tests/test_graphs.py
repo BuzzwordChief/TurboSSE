@@ -263,6 +263,7 @@ class GraphCases:
         self.page.mouse.move(box['x'] + 300, box['y'] + 100)
         self.assertEqual(self.page.evaluate(hint), '"Click to interact"')
         expect(tools).to_be_hidden()
+        expect(self.page.locator('#a [role=toolbar]')).to_be_hidden()
         self.page.mouse.wheel(0, 200)
         self.page.wait_for_function('scrollY > 0')
         self.page.evaluate('scrollTo(0, 0)'); self.page.wait_for_function('scrollY === 0')
@@ -271,6 +272,7 @@ class GraphCases:
         self.page.mouse.click(box['x'] + 300, box['y'] + 100)
         expect(plot).to_have_attribute('data-active', '')
         expect(tools).to_be_visible()
+        expect(self.page.locator('#a [role=toolbar]')).to_be_visible()
         self.assertEqual(self.page.evaluate(hint), 'none')
         expect(self.page.locator('#a [data-action="Live"]')).to_be_checked()
         # Active: the wheel zooms the plot instead of scrolling the page.
@@ -428,7 +430,7 @@ class GraphCases:
         self.page.keyboard.up('Shift'); self.frames()
         self.page.mouse.move(*spot); zoomed, text = self.pointer_y()
         self.assertNotAlmostEqual(zoomed, fitted, delta=abs(fitted) * .01 + 1e-9, msg=text)
-        self.assertEqual(self.page.locator('#a .turbo-sse-tools button').all_inner_texts(), ['FitF', 'Back', 'Export view'])
+        self.assertEqual(self.page.locator('#a .turbo-sse-plot > header button').all_inner_texts(), ['FitF', 'Back', 'Export view'])
 
     def test_restart_rows_and_unsynchronized_times(self):
         self.open('<div data-sse-graph data-sse-event="v"></div>')

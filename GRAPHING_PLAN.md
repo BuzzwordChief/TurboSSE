@@ -1,6 +1,6 @@
 # TurboSSE: graphing and offline inspection
 
-Status: implemented. README.md documents the shipped interface; VALIDATION.md records verification and limits. The current complete bundle exceeds the soft 8 KiB target, with a 17 KiB regression ceiling.
+Status: implemented. README.md documents the shipped interface; VALIDATION.md records verification and limits. The current complete bundle exceeds the soft 8 KiB target, with an 18 KiB regression ceiling.
 
 ## 1. What we are building
 

@@ -15,7 +15,6 @@ ROOT = Path(__file__).resolve().parents[1]
 ASSETS = {
     "/": (ROOT / "examples/index.html", "text/html; charset=utf-8"),
     "/debug-transforms.js": (ROOT / "examples/debug-transforms.js", "text/javascript; charset=utf-8"),
-    "/demo.css": (ROOT / "examples/demo.css", "text/css; charset=utf-8"),
     "/turbo-sse.min.js": (ROOT / "dist/turbo-sse.min.js", "text/javascript; charset=utf-8"),
     "/turbo-sse.css": (ROOT / "dist/turbo-sse.css", "text/css; charset=utf-8"),
 }

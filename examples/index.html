@@ -5,40 +5,55 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>TurboSSE · Measurement bench</title>
   <link rel="stylesheet" href="/turbo-sse.css">
-  <link rel="stylesheet" href="/demo.css">
   <script defer src="/debug-transforms.js"></script>
   <script defer src="/turbo-sse.min.js"></script>
 </head>
 <!-- Raw events are captured by default. To omit selected payloads only,
-     add data-sse-omit-raw="temperature telemetry" to this root. -->
+     add data-sse-omit-raw="temperature telemetry" to this root.
+     turbo-sse.css styles plain elements, so this page needs no classes or page stylesheet:
+     each <section> directly inside <main> becomes a column. -->
 <body data-sse-connect="/events" data-sse-events="diagnostic" data-sse-timeout="30000"
       data-sse-uptime-event="uptime" data-sse-graph-bytes="1048576">
   <main>
-    <header class="page-header">
+    <header>
       <h1>Measurement bench</h1>
       <p>Device 01. Live thermal response, motor speed, and supply voltage.</p>
     </header>
-    <div class="metrics">
-      <section><h2>Inlet temperature</h2><p class="value" id="temperature-value" data-sse-event="temperature" data-sse-transform="celsius_to_degree">—</p></section>
-      <section><h2>Motor speed</h2><p class="value"><span id="rpm-value" data-sse-event="telemetry" data-sse-json="/rpm">—</span> <small>rpm</small></p></section>
-      <section><h2>Supply voltage</h2><p class="value" id="voltage-value" data-sse-event="telemetry" data-sse-json="/voltage" data-sse-transform="volts_to_millivolts">—</p></section>
-    </div>
-    <p class="instructions">Click a plot to use it. Then drag to pan and scroll to zoom. Right-drag to zoom into a range, Shift-drag to measure an interval. Uncheck <strong>Live</strong> to hold the current window. The plots share their time window and cursors.</p>
-    <div id="thermal-plot" data-sse-graph data-sse-title="Thermal response" data-sse-sync="bench" data-sse-window="60">
-      <span data-sse-event="temperature" data-sse-label="Inlet temperature" data-sse-unit="°C">—</span>
-      <span data-sse-event="telemetry" data-sse-json="/outlet" data-sse-label="Outlet temperature" data-sse-unit="°C">—</span>
-    </div>
-    <div id="speed-plot" data-sse-graph data-sse-sync="bench" data-sse-event="telemetry"
-         data-sse-json="/rpm" data-sse-label="Motor speed" data-sse-unit="rpm"></div>
-    <div id="voltage-plot" data-sse-graph data-sse-sync="bench" data-sse-event="telemetry"
-         data-sse-json="/voltage" data-sse-transform="numeric_millivolts" data-sse-label="Supply voltage" data-sse-unit="mV"></div>
-    <details class="diagnostics">
-      <summary>Device state, original payloads &amp; log</summary>
-      <section><h2>Device state</h2><div id="device-state" data-sse-event="status" data-sse-format="html">Waiting for device…</div></section>
-      <section><h2>Latest telemetry payload</h2><pre data-sse-event="telemetry">Waiting for telemetry…</pre></section>
-      <section><h2>Device log</h2><pre class="log" data-sse-event="log" data-sse-swap="append" data-sse-limit="500"></pre></section>
+
+    <table>
+        <caption>Real-time values</caption>
+        <thead><tr><th>Measurement</th><th>Value</th></tr></thead>
+        <tbody>
+            <tr><th>Inlet temperature</th><td id="temperature-value" data-sse-event="temperature" data-sse-transform="celsius_to_degree">—</td></tr>
+            <tr><th>Outlet temperature</th><td id="outlet-value" data-sse-event="telemetry" data-sse-json="/outlet" data-sse-transform="celsius_to_degree">—</td></tr>
+            <tr><th>Motor speed</th><td><span id="rpm-value" data-sse-event="telemetry" data-sse-json="/rpm">—</span> rpm</td></tr>
+            <tr><th>Supply voltage</th><td id="voltage-value" data-sse-event="telemetry" data-sse-json="/voltage" data-sse-transform="volts_to_millivolts">—</td></tr>
+            <tr><th>Device state</th><td id="device-state" data-sse-event="status" data-sse-format="html">Waiting for device…</td></tr>
+        </tbody>
+    </table>
+
+    <hr />
+
+    <p>Click a plot to use it. Then drag to pan and scroll to zoom. Right-drag to zoom into a range, Shift-drag to measure an interval. Uncheck <strong>Live</strong> to hold the current window. The plots share their time window and cursors.</p>
+
+    <section>
+      <div id="thermal-plot" data-sse-graph data-sse-title="Thermal response" data-sse-sync="bench" data-sse-window="60">
+        <span data-sse-event="temperature" data-sse-label="Inlet temperature" data-sse-unit="°C">—</span>
+        <span data-sse-event="telemetry" data-sse-json="/outlet" data-sse-label="Outlet temperature" data-sse-unit="°C">—</span>
+      </div>
+    </section>
+    <section>
+      <div id="speed-plot" data-sse-graph data-sse-sync="bench" data-sse-event="telemetry"
+           data-sse-json="/rpm" data-sse-label="Motor speed" data-sse-unit="rpm"></div>
+      <div id="voltage-plot" data-sse-graph data-sse-sync="bench" data-sse-event="telemetry"
+           data-sse-json="/voltage" data-sse-transform="numeric_millivolts" data-sse-label="Supply voltage" data-sse-unit="mV"></div>
+    </section>
+    <details>
+      <summary>Original payloads and device log</summary>
+      <section><h3>Latest telemetry payload</h3><pre data-sse-event="telemetry">Waiting for telemetry…</pre></section>
+      <section><h3>Device log</h3><pre data-sse-event="log" data-sse-swap="append" data-sse-limit="500"></pre></section>
     </details>
-    <p class="footnote">Export All downloads one ZIP with the original retained events, a separate CSV file for each series, and an export.txt describing them. Older graph history is summarized when its memory budget fills; extrema and statistics remain available. Uptime and restart markers are estimates.</p>
+    <footer>Export All downloads one ZIP with the original retained events, a separate CSV file for each series, and an export.txt describing them. Older graph history is summarized when its memory budget fills; extrema and statistics remain available. Uptime and restart markers are estimates.</footer>
   </main>
 </body>
 </html>

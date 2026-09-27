@@ -4,7 +4,7 @@ A standalone JavaScript library for embedded-device debug pages. Bind SSE events
 
 Build the runtime into `dist/turbo-sse.min.js` and `dist/turbo-sse.css`, or download the GitHub Actions artifact. Copy both files onto your device. No Node.js, bundler, CDN, or Python is needed on the device. Readable sources are in `src/`; Python 3.9 is used for the example server, build tooling, and tests. Generated `dist/` files are ignored by Git.
 
-The shipped JavaScript and CSS total **17,195 bytes gzip** (16.8 KiB). This exceeds the soft 8 KiB target; the complete graphing/inspection/export implementation has a 17 KiB regression ceiling. Chromium, Firefox, and WebKit tests cover the runtime and downloads. See [VALIDATION.md](VALIDATION.md) for numerical simulations, live-run results, tested hashes, and their scope.
+The shipped JavaScript and CSS total **17,649 bytes gzip** (17.2 KiB). This exceeds the soft 8 KiB target; the complete graphing/inspection/export implementation, including the classless page styles, has an 18 KiB regression ceiling. Chromium, Firefox, and WebKit tests cover the runtime and downloads. See [VALIDATION.md](VALIDATION.md) for numerical simulations, live-run results, tested hashes, and their scope.
 
 **Run the example**
 
@@ -24,7 +24,7 @@ python3.9 examples/server.py --restart-every 20
 python3.9 examples/server.py --rate 100
 ```
 
-The demo shows overlaid inlet/outlet temperatures and synchronized motor-speed/voltage panels. Its 1 MiB graph budget makes compaction easy to exercise at higher sample rates. Uptime belongs to the simulated device, not the connection; `--disconnect-every` preserves it, while `--restart-every` resets it. The silence timeout is 30 seconds. The server sends a fresh snapshot on each connection; it does not replay missed history. Press Ctrl+C to stop it. `--host`, `--port`, and `--rate` configure the listener and sample frequency; the default listener is localhost only.
+The demo is a two-column page styled only by `turbo-sse.css`: overlaid inlet/outlet temperatures above a table of real-time values, and synchronized motor-speed/voltage panels beside them. Its 1 MiB graph budget makes compaction easy to exercise at higher sample rates. Uptime belongs to the simulated device, not the connection; `--disconnect-every` preserves it, while `--restart-every` resets it. The silence timeout is 30 seconds. The server sends a fresh snapshot on each connection; it does not replay missed history. Press Ctrl+C to stop it. `--host`, `--port`, and `--rate` configure the listener and sample frequency; the default listener is localhost only.
 
 **Use in a page**
 
@@ -111,14 +111,14 @@ A container without its own event binding can overlay several series. Matching s
      data-sse-label="Motor speed" data-sse-unit="rpm"></div>
 ```
 
-Keep one unit per panel; use stacked panels for different quantities. The first panel in a sync group sets its Live window. Graphs fill their container; set `--turbo-sse-height: 220px` in CSS to change the plot-area height. `data-sse-y-min` and `data-sse-y-max` optionally fix the y range. Each graph generates a header showing its title and the units of its series. The title is `data-sse-title`, else the graph's own `data-sse-label`, else the series labels. Graphs own generated header/controls/canvas/legend DOM and temporarily hide their source spans; destruction restores those spans. The source elements themselves remain intact.
+Keep one unit per panel; use stacked panels for different quantities. The first panel in a sync group sets its Live window. Graphs fill their container; the plot area is 220 px tall; set `--turbo-sse-height` in CSS to change it. `data-sse-y-min` and `data-sse-y-max` optionally fix the y range. Each graph generates a header showing its title and the units of its series. The title is `data-sse-title`, else the graph's own `data-sse-label`, else the series labels. Graphs own generated header/controls/canvas/legend DOM and temporarily hide their source spans; destruction restores those spans. The source elements themselves remain intact.
 
 Hovering shows a crosshair; the readout row lists the elapsed time, the y value under the pointer, and the nearest sample. Legend entries toggle a series (Shift-click isolates one); a hidden series keeps an outlined swatch so it is still listed.
 
 - A plot is inactive until you click it or move keyboard focus into it. Hovering an inactive plot shows "Click to interact", and the wheel scrolls the page as usual. The first click only activates the plot; clicking elsewhere or tabbing away deactivates it. Clicking a toolbar control keeps the plot active and returns keyboard focus to the plot, so its shortcuts keep working; a control activated from the keyboard keeps focus. On touch screens an inactive plot lets the page scroll, and the first tap activates it.
 - Drag to pan and use the wheel to zoom around the pointer. While **Live** is checked, the wheel only changes the followed window, so zooming in or out keeps tracking incoming data; panning or selecting a range unchecks Live. Checking Live again keeps the current span and moves it to the newest data. **Fit** is a one-time action: it shows all retained history and restores automatic y scaling. It leaves Live as it is; while Live is checked, the followed window then covers all history as data arrives. Right-drag selects a time range to zoom into, shown as a gray band with dashed edges; Shift with right-drag also zooms y.
 - Shift-drag measures an interval, shown as an amber band between solid A and B lines. Measuring and placing a marker both uncheck Live so the markers stay in view. The markers are labelled A and B on the outer side of the measured interval, and the first measurement row lists each marker's own time. On touch screens, drag pans and two taps set A/B. Keyboard `A` and `B` set them at the cursor, or the view center; Escape clears/cancels. Readouts include delta time/value, slope, count, extrema, peak-to-peak, mean, RMS and population standard deviation.
-- Left/right arrows pan, `+`/`-` zoom, `L` toggles Live, and `F` fits retained history. Shortcuts work while the plot is active, wherever focus is inside it; key combinations with Ctrl, Cmd or Alt are left to the browser. The Live checkbox, the Fit, Back and Export view buttons, and a key legend for the pointer and keyboard controls appear in a band above the plot while it is active; Live and Fit show their `L` and `F` keys. The band is reserved, so the controls never cover data. Touch screens show only the buttons.
+- Left/right arrows pan, `+`/`-` zoom, `L` toggles Live, and `F` fits retained history. Shortcuts work while the plot is active, wherever focus is inside it; key combinations with Ctrl, Cmd or Alt are left to the browser. While the plot is active, the Live checkbox and the Fit, Back and Export view buttons appear in its header, and a key legend for the pointer and keyboard controls appears in a band above the data; Live and Fit show their `L` and `F` keys. The band is reserved, so the legend never covers data. Touch screens show no key legend.
 - Click a legend entry, or press Enter or Space on it, to hide/show it; Shift-click isolates it. Legend, readout and measurement text can be selected and copied; selecting legend text does not toggle the series. Acquisition continues for hidden series. **Back** restores an earlier time window.
 - **Export view** downloads a ZIP with the selected plot's series for the visible or A/B interval. The topbar's **Export All** downloads a ZIP with all retained data.
 
@@ -202,7 +202,19 @@ The topbar displays text and a colored marker: Connecting/Reconnecting in amber,
 
 **Styling**
 
-`turbo-sse.css` is deliberately small and follows the look of the HAProxy status page: 12 px Arial, black on white, 1 px gray rules, navy plot header bars, beige bands for the topbar and legend, tinted connection states (green, amber, red), and a yellow key legend. Numbers use tabular figures. Only elements inside generated `turbo-sse-` classes are styled, so an application stylesheet can override any rule. The canvas takes its axis, tick, and grid color from the computed `color` of `.turbo-sse-area`, so restyling the plot does not require editing the script. Series colors come from a fixed six-color palette in the script and are exposed to the legend as `--series-color`.
+`turbo-sse.css` follows the look of the HAProxy status page: 12 px Arial, black on white, 1 px gray rules, navy header bars, beige bands, tinted connection states (green, amber, red), and a yellow key legend. Numbers use tabular figures.
+
+It is also a small classless stylesheet for the page around the plots, so a device page needs no classes and no stylesheet of its own; the example uses none. It styles plain elements:
+
+- `body` and `main` set the font, colors and a centered page up to 1400 px wide.
+- Each `<section>` directly inside `<main>` becomes a column; columns sit side by side when there is room for at least 480 px each and stack otherwise. Everything else in `<main>` spans the full width.
+- A `<header>` directly inside `<main>` lays out the `<h1>` title and a `<p>` tagline on one ruled line. `<h2>` is the navy italic subtitle style.
+- `<h3>` and table `<caption>` are navy bands, like the plot headers, so a captioned table reads as a panel.
+- Tables collapse their borders, `thead` cells get the beige band, and cells use tabular figures.
+- `<details>` is set off by a rule with a bold `<summary>`; `<section>` blocks inside it get a gray border. `<pre>` wraps long lines and scrolls beyond 240 px.
+- `<footer>`, links, `<kbd>`, buttons, disabled buttons and keyboard focus rings get matching styles; `[hidden]` always hides.
+
+These are element selectors, so any application rule for the same element overrides them. The canvas takes its axis, tick, and grid color from the computed `color` of `.turbo-sse-area`, so restyling the plot does not require editing the script. Series colors come from a fixed six-color palette in the script and are exposed to the legend as `--series-color`.
 
 Normal transient failures use the existing native `EventSource` reconnect behavior and the server's `retry:` interval. Terminal closure, including HTTP 204, shows Disconnected and a manual Retry button; the browser does not expose the specific HTTP status to the library.
 
@@ -285,7 +297,7 @@ The tests run against real localhost SSE endpoints in Chromium, Firefox, and Web
 
 `TURBO_SSE_BROWSERS=chromium,firefox` selects engines for discovery. `TURBO_SSE_ASSET=src/turbo-sse.js` exercises the readable source instead of the default minified asset. The Python tests and example require no Node.js installation. Playwright and rjsmin are development dependencies only.
 
-The build emits minified assets, deterministic `.gz` variants, and C headers for both JavaScript representations, and reports the soft 8 KiB combined gzip target and enforces a 17 KiB regression ceiling for JavaScript and CSS. When serving a precompressed `.gz` asset, keep the original JavaScript/CSS content type and send `Content-Encoding: gzip`; do not merely link to a `.gz` URL without that header.
+The build emits minified assets, deterministic `.gz` variants, and C headers for both JavaScript representations, and reports the soft 8 KiB combined gzip target and enforces an 18 KiB regression ceiling for JavaScript and CSS. When serving a precompressed `.gz` asset, keep the original JavaScript/CSS content type and send `Content-Encoding: gzip`; do not merely link to a `.gz` URL without that header.
 
 **Embed the JavaScript in firmware**
 
