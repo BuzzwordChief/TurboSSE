@@ -243,17 +243,293 @@
       const a = sample(new Float64Array(FIELDS), data[i * 3], data[i * 3 + 1], data[i * 3 + 2], found.a[4]);
       return {a, summary: false};
     }
-    copy() {
+    *rows(lo = -Infinity, hi = Infinity) {
+      const walk = function* (n) {
+        if (!n || n.a[1] < lo || n.a[0] > hi) return;
+        if (n.left) { yield* walk(n.left); yield* walk(n.right); }
+        else if (!n.data) yield {a: n.a, summary: true};
+        else {
+          const a = new Float64Array(FIELDS);
+          for (let i = 0; i < n.a[15] * 3; i += 3) {
+            if (n.data[i] < lo || n.data[i] > hi) continue;
+            a.fill(0);
+            yield {a: sample(a, n.data[i], n.data[i + 1], n.data[i + 2], n.a[4]), summary: false};
+          }
+        }
+      };
+      for (const n of this.roots) yield* walk(n);
+      yield* walk(this.current);
+    }
+    copy(lo = -Infinity, hi = Infinity) {
       const h = new History(this.limit);
-      const clone = n => n && ({a: n.a.slice(), level: n.level, bytes: n.bytes,
-        data: n.data && n.data.slice(), left: clone(n.left), right: clone(n.right)});
-      h.roots = this.roots.map(clone); h.current = clone(this.current); h.bytes = this.bytes;
+      const clone = n => {
+        if (!n || n.a[1] < lo || n.a[0] > hi) return null;
+        const left = clone(n.left), right = clone(n.right);
+        if (n.left && (!left || !right)) return left || right;
+        h.bytes += NODE_BYTES + (n.data ? n.data.byteLength : 0);
+        return {a: n.a.slice(), level: n.level, bytes: n.bytes, data: n.data && n.data.slice(), left, right};
+      };
+      h.roots = this.roots.map(clone).filter(Boolean); h.current = clone(this.current);
       return h;
     }
   }
 
+  const palette = ["#235d9c", "#b04a25", "#247766", "#8051a1", "#9a7017", "#3c7180"];
+  const format = value => Number.isFinite(value) ? String(Number(value.toPrecision(5))) : "—";
+  function make(tag, className, text, parent) {
+    const node = document.createElement(tag);
+    node.className = className;
+    if (text !== undefined) node.textContent = text;
+    if (parent) parent.append(node);
+    return node;
+  }
+  function option(element, name, fallback) {
+    const raw = attr(element, name), value = raw === null ? fallback : numeric(raw);
+    if (value !== null && !Number.isFinite(value)) throw new Error("Invalid data-sse-" + name);
+    return value;
+  }
+  function ticks(lo, hi, count) {
+    const base = Math.pow(10, Math.floor(Math.log10((hi - lo) / count)));
+    const step = [1, 2, 5, 10].find(v => v * base >= (hi - lo) / count) * base;
+    const values = [];
+    if (!Number.isFinite(step) || step <= 0) return values;
+    for (let v = Math.ceil(lo / step) * step; v <= hi && values.length < 20; v += step) values.push(v);
+    return values;
+  }
+
+  class Plot {
+    constructor(host, sources, view, hooks) {
+      this.host = host; this.sources = sources; this.view = view; this.hooks = hooks;
+      this.min = option(host, "y-min", null); this.max = option(host, "y-max", null);
+      if (this.min !== null && this.max !== null && this.min >= this.max) throw new Error("Graph y-min must be below y-max");
+      this.hidden = new Set(); this.y = null; this.mode = "Zoom"; this.drag = null;
+      this.abort = new AbortController();
+      const listen = (node, name, fn, opts = {}) => node.addEventListener(name, fn, {...opts, signal: this.abort.signal});
+      this.element = make("section", "turbo-sse-plot", undefined, host);
+      this.element.setAttribute("aria-label", attr(host, "label") || sources.map(c => c.label).join(", "));
+      this.controls = make("div", "turbo-sse-tools", undefined, this.element);
+      for (const action of ["Live", "Fit", "Fit Y", "Back", "Export view"]) {
+        const b = make("button", "", action, this.controls); b.type = "button"; b.dataset.action = action;
+      }
+      this.modeControl = make("select", "", undefined, this.controls);
+      this.modeControl.setAttribute("aria-label", "Plot interaction");
+      for (const text of ["Zoom", "Pan", "Measure"]) make("option", "", text, this.modeControl);
+      listen(this.modeControl, "change", () => { this.mode = this.modeControl.value; });
+      this.area = make("div", "turbo-sse-area", undefined, this.element);
+      this.canvas = make("canvas", "", undefined, this.area);
+      this.canvas.tabIndex = 0;
+      this.canvas.setAttribute("role", "img");
+      this.canvas.setAttribute("aria-label", this.element.getAttribute("aria-label") + ". Arrows pan; plus/minus zoom; A/B measure; L live; F fit.");
+      this.cursor = make("div", "turbo-sse-cursor", undefined, this.area);
+      this.horizontal = make("div", "turbo-sse-cross-y", undefined, this.area);
+      this.selection = make("div", "turbo-sse-selection", undefined, this.area);
+      this.cursor.hidden = this.horizontal.hidden = this.selection.hidden = true;
+      this.legend = make("div", "turbo-sse-legend", undefined, this.element);
+      this.values = sources.map(c => {
+        const b = make("button", "", undefined, this.legend); b.type = "button";
+        b.style.setProperty("--series-color", palette[(c.id - 1) % palette.length]);
+        b.setAttribute("aria-pressed", "true");
+        make("span", "turbo-sse-series-name", c.label, b);
+        const value = make("span", "turbo-sse-series-value", "—", b);
+        listen(b, "click", event => {
+          if (event.shiftKey) { this.hidden = new Set(sources.filter(s => s !== c)); }
+          else if (this.hidden.has(c)) this.hidden.delete(c); else this.hidden.add(c);
+          this.values.forEach((v, i) => v.parentElement.setAttribute("aria-pressed", String(!this.hidden.has(sources[i]))));
+          hooks.invalidate();
+        });
+        return value;
+      });
+      this.readout = make("div", "turbo-sse-readout", "Waiting for data", this.element);
+      this.measure = make("div", "turbo-sse-measure", undefined, this.element);
+      listen(this.controls, "click", event => {
+        const action = event.target.dataset.action;
+        if (action === "Live") { this.save(); view.live = true; }
+        if (action === "Fit") { this.save(); const r = hooks.extent(view); view.lo = r[0]; view.hi = Math.max(r[1], r[0] + .001); view.live = false; }
+        if (action === "Fit Y") this.y = null;
+        if (action === "Back" && view.history.length) Object.assign(view, view.history.pop());
+        if (action === "Export view") hooks.export(sources, view.a !== null && view.b !== null ? [Math.min(view.a, view.b), Math.max(view.a, view.b)] : [view.lo, view.hi]);
+        hooks.invalidate();
+      });
+      listen(this.canvas, "wheel", event => {
+        if (document.activeElement !== this.canvas) return;
+        event.preventDefault();
+        const t = this.time(event), factor = Math.exp(Math.max(-1, Math.min(1, event.deltaY / 300)));
+        this.setRange(t + (view.lo - t) * factor, t + (view.hi - t) * factor);
+      }, {passive: false});
+      listen(this.canvas, "pointerdown", event => {
+        if (this.drag || event.button !== 0) return;
+        event.preventDefault(); this.canvas.focus(); this.canvas.setPointerCapture(event.pointerId);
+        const t = this.time(event);
+        this.drag = {x: event.clientX, y: event.clientY, t, lo: view.lo, hi: view.hi, live: view.live, a: view.a, b: view.b, fresh: view.a === null || view.b !== null};
+        this.save(); view.live = false; hooks.invalidate();
+        if (this.mode === "Measure") { if (this.drag.fresh) view.a = t; view.b = null; }
+      });
+      listen(this.canvas, "pointermove", event => {
+        const t = this.time(event); view.cursor = t;
+        this.cursorY = Math.max(12, Math.min(12 + this.height, event.clientY - this.canvas.getBoundingClientRect().top));
+        if (this.drag) {
+          const d = this.drag;
+          if (this.mode === "Pan") {
+            const shift = (event.clientX - d.x) * (d.hi - d.lo) / this.width;
+            this.setRange(d.lo - shift, d.hi - shift, false);
+          } else if (this.mode === "Measure") { view.b = t; hooks.invalidate(); }
+          else this.band(d.t, t);
+        }
+        hooks.cursor(view);
+      });
+      listen(this.canvas, "pointerup", event => {
+        if (!this.drag) return;
+        const d = this.drag, t = this.time(event); this.drag = null;
+        if (this.mode === "Zoom" && Math.abs(event.clientX - d.x) > 3) {
+          if (event.shiftKey && Math.abs(event.clientY - d.y) > 3) {
+            const rect = this.canvas.getBoundingClientRect();
+            this.y = [this.value(Math.max(d.y, event.clientY) - rect.top), this.value(Math.min(d.y, event.clientY) - rect.top)];
+          }
+          this.setRange(Math.min(d.t, t), Math.max(d.t, t), false);
+        } else if (this.mode === "Measure") {
+          view.b = d.fresh && Math.abs(event.clientX - d.x) < 3 ? null : t;
+        }
+        hooks.invalidate();
+      });
+      listen(this.canvas, "pointercancel", () => { this.cancel(); });
+      listen(this.canvas, "pointerleave", () => { if (!this.drag) { view.cursor = null; this.cursorY = null; hooks.cursor(view); } });
+      listen(this.canvas, "keydown", event => {
+        const key = event.key.toLowerCase(), span = view.hi - view.lo, center = view.cursor === null ? (view.lo + view.hi) / 2 : view.cursor;
+        if (["arrowleft", "arrowright", "+", "=", "-", "a", "b", "l", "f", "escape"].includes(key)) event.preventDefault();
+        if (key === "arrowleft" || key === "arrowright") this.setRange(view.lo + span * (key === "arrowleft" ? -.1 : .1), view.hi + span * (key === "arrowleft" ? -.1 : .1));
+        if (["+", "=", "-"].includes(key)) { const f = key === "-" ? 1.25 : .8; this.setRange(center + (view.lo - center) * f, center + (view.hi - center) * f); }
+        if (key === "a") view.a = center;
+        if (key === "b") view.b = center;
+        if (key === "escape") { this.cancel(); view.a = view.b = null; }
+        if (key === "l" || key === "f") this.controls.querySelector('[data-action="' + (key === "l" ? "Live" : "Fit") + '"]').click();
+        hooks.invalidate();
+      });
+      this.observer = new ResizeObserver(() => hooks.invalidate());
+      this.observer.observe(this.area);
+    }
+    trimHistory() { if (this.view.history.length > 20) this.view.history.shift(); }
+    save() { this.view.history.push({lo: this.view.lo, hi: this.view.hi, live: this.view.live}); this.trimHistory(); }
+    cancel() {
+      if (this.drag) {
+        const d = this.drag; Object.assign(this.view, {a: d.a, b: d.b, lo: d.lo, hi: d.hi, live: d.live});
+        this.view.history.pop(); this.drag = null;
+      }
+      this.hooks.invalidate();
+    }
+    setRange(lo, hi, remember = true) {
+      const extent = this.hooks.extent(this.view), span = Math.max(.0001, hi - lo);
+      if (lo < extent[0]) { lo = extent[0]; hi = lo + span; }
+      if (hi > extent[1]) { hi = Math.max(extent[1], extent[0] + .001); lo = Math.max(extent[0], hi - span); }
+      if (remember) this.save();
+      Object.assign(this.view, {lo, hi: Math.max(hi, lo + .0001), live: false});
+      this.hooks.invalidate();
+    }
+    time(event) { const rect = this.canvas.getBoundingClientRect(); return this.view.lo + Math.max(0, Math.min(this.width, event.clientX - rect.left - 64)) / this.width * (this.view.hi - this.view.lo); }
+    x(t) { return 64 + (t - this.view.lo) / (this.view.hi - this.view.lo) * this.width; }
+    value(y) { return this.yMax - (y - 12) / this.height * (this.yMax - this.yMin); }
+    band(a, b) {
+      this.selection.hidden = a === null || b === null;
+      if (this.selection.hidden) return;
+      const x = Math.max(64, Math.min(this.x(a), this.x(b))), end = Math.min(64 + this.width, Math.max(this.x(a), this.x(b)));
+      this.selection.style.cssText = `left:${x}px;top:12px;width:${Math.max(0,end-x)}px;height:${this.height}px`;
+    }
+    inspect() {
+      const g = this.view, t = g.cursor;
+      this.cursor.hidden = t === null || t < g.lo || t > g.hi;
+      if (!this.cursor.hidden) this.cursor.style.cssText = `left:${this.x(t)}px;top:12px;height:${this.height}px`;
+      this.horizontal.hidden = this.cursor.hidden || this.cursorY == null;
+      if (!this.horizontal.hidden) this.horizontal.style.cssText = `left:64px;top:${this.cursorY}px;width:${this.width}px`;
+      this.sources.forEach((c, i) => {
+        const point = c.history.nearest(t === null ? Infinity : t), a = point && point.a;
+        this.values[i].textContent = !a || !a[5] ? "—" : (point.summary ? `${format(a[6])}…${format(a[7])} (mean ${format(a[8])}, n=${a[5]})` : format(a[8])) + (c.unit ? " " + c.unit : "");
+      });
+      if (t !== null) {
+        const point = this.sources[0].history.nearest(t), a = point && point.a;
+        this.readout.textContent = "Elapsed " + format(t) + " s" + (!a ? "" : point.summary ? ` · summary ${format(a[0])}–${format(a[1])} s` :
+          ` · sample ${format(a[0])} s · uptime ${Number.isFinite(a[2]) ? "≈" + format(a[2]) + " s" : "— (unsynchronized)"}`);
+      } else this.readout.textContent = this.baseReadout || "Waiting for data";
+    }
+    draw() {
+      if (!this.host.isConnected || !this.area.clientWidth || !this.area.getClientRects().length) return;
+      const w = this.area.clientWidth, h = this.area.clientHeight, dpr = Math.min(3, window.devicePixelRatio || 1), g = this.view;
+      this.width = Math.max(1, w - 80); this.height = Math.max(1, h - 48);
+      if (this.canvas.width !== Math.round(w * dpr) || this.canvas.height !== Math.round(h * dpr)) { this.canvas.width = Math.round(w * dpr); this.canvas.height = Math.round(h * dpr); }
+      const ctx = this.canvas.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+      let low = Infinity, high = -Infinity, retained = 0;
+      for (const c of this.sources) {
+        if (this.hidden.has(c)) continue;
+        const a = c.history.range(g.lo, g.hi);
+        if (a && a[5]) { low = Math.min(low, a[6]); high = Math.max(high, a[7]); retained += a[5]; }
+      }
+      if (!Number.isFinite(low)) { low = 0; high = 1; }
+      const pad = (high - low || Math.abs(high) || 1) * .06;
+      this.yMin = this.y ? this.y[0] : this.min === null ? low - pad : this.min;
+      this.yMax = this.y ? this.y[1] : this.max === null ? high + pad : this.max;
+      if (this.yMin >= this.yMax) this.yMax = this.yMin + Math.max(1, Math.abs(this.yMin) * .01);
+      const y = v => 12 + (this.yMax - v) / (this.yMax - this.yMin) * this.height;
+      ctx.font = "11px system-ui"; ctx.fillStyle = "#344454"; ctx.strokeStyle = "#dce3e9"; ctx.lineWidth = .7;
+      ctx.textAlign = "right";
+      for (const v of ticks(this.yMin, this.yMax, 5)) { const p = y(v); ctx.beginPath(); ctx.moveTo(60, p); ctx.lineTo(w - 16, p); ctx.stroke(); ctx.fillText(format(v), 56, p + 4); }
+      ctx.textAlign = "center";
+      for (const v of ticks(g.lo, g.hi, Math.max(2, this.width / 90))) { const p = this.x(v); ctx.beginPath(); ctx.moveTo(p, 12); ctx.lineTo(p, h - 36); ctx.stroke(); ctx.fillText(format(v), p, h - 20); }
+      ctx.fillText("Elapsed time (s)", 64 + this.width / 2, h - 4); ctx.textAlign = "left"; ctx.fillText(this.sources[0].unit, 4, 10);
+      ctx.save(); ctx.beginPath(); ctx.rect(64, 12, this.width, this.height); ctx.clip();
+      for (const c of this.sources) {
+        if (this.hidden.has(c)) continue;
+        const color = palette[(c.id - 1) % palette.length]; ctx.strokeStyle = ctx.fillStyle = color; ctx.lineWidth = 1.3; ctx.beginPath();
+        let connected = false;
+        c.history.query(g.lo, g.hi, Math.min(2048, this.width), (a, summary) => {
+          if (!a[5]) { connected = false; return; }
+          if (summary || a[14]) {
+            ctx.stroke(); ctx.globalAlpha = .12;
+            ctx.fillRect(this.x(a[0]), y(a[7]), Math.max(1, this.x(a[1]) - this.x(a[0])), Math.max(1, y(a[6]) - y(a[7])));
+            ctx.globalAlpha = 1; ctx.beginPath(); ctx.moveTo(this.x(a[0]), y(a[6])); ctx.lineTo(this.x(a[1]), y(a[6]));
+            ctx.moveTo(this.x(a[0]), y(a[7])); ctx.lineTo(this.x(a[1]), y(a[7])); ctx.stroke(); ctx.beginPath(); connected = false;
+          } else {
+            const line = (t, v) => { if (connected) ctx.lineTo(this.x(t), y(v)); else ctx.moveTo(this.x(t), y(v)); connected = true; };
+            line(a[0], a[10]);
+            if (a[12] <= a[13]) { line(a[12], a[6]); line(a[13], a[7]); }
+            else { line(a[13], a[7]); line(a[12], a[6]); }
+            line(a[1], a[11]);
+            if (a[15] === 1 && retained < 100) { ctx.fillRect(this.x(a[0]) - 1.5, y(a[8]) - 1.5, 3, 3); }
+          }
+        });
+        ctx.stroke();
+      }
+      ctx.strokeStyle = "#9b5437"; ctx.fillStyle = "#793c25"; ctx.setLineDash([4, 3]);
+      for (const marker of this.hooks.restarts()) if (marker.time >= g.lo && marker.time <= g.hi) {
+        const x = this.x(marker.time); ctx.beginPath(); ctx.moveTo(x, 12); ctx.lineTo(x, h - 36); ctx.stroke(); ctx.fillText("≈ restart", x + 4, 24);
+      }
+      ctx.restore(); ctx.setLineDash([]);
+      if (!retained) { ctx.textAlign = "center"; ctx.fillStyle = "#647586"; ctx.fillText("Waiting for valid data", 64 + this.width / 2, h / 2); }
+      this.controls.children[0].setAttribute("aria-pressed", String(g.live));
+      this.baseReadout = (g.live ? "Live" : "Inspecting") + ` · ${format(g.lo)}–${format(g.hi)} s · ${retained} samples`;
+      this.band(g.a, g.b); this.inspect();
+      this.measure.replaceChildren();
+      if (g.a !== null && g.b !== null) {
+        const lo = Math.min(g.a, g.b), hi = Math.max(g.a, g.b), dt = hi - lo;
+        make("p", "", `A ${format(lo)} s · B ${format(hi)} s · Δt ${format(dt)} s · 1/Δt ${format(dt ? 1/dt : NaN)} Hz`, this.measure);
+        for (const c of this.sources) {
+          if (this.hidden.has(c)) continue;
+          const a = c.history.range(lo, hi), left = c.history.nearest(lo), right = c.history.nearest(hi);
+          if (!a || !a[5]) continue;
+          const sd = Math.sqrt(Math.max(0, a[9] / a[5]));
+          let text = `${c.label}: n ${a[5]} · min ${format(a[6])} · max ${format(a[7])} · p-p ${format(a[7]-a[6])} · mean ${format(a[8])} · RMS ${format(Math.hypot(a[8],sd))} · σ ${format(sd)} ${c.unit}`;
+          if (left && right && left.a[5] && right.a[5]) {
+            const dy = right.a[8]-left.a[8], seconds = right.a[0]-left.a[0];
+            text += ` · ${left.summary || right.summary ? "Δmean" : "Δy"} ${format(dy)}`;
+            if (!left.summary && !right.summary) text += " · slope " + format(seconds ? dy/seconds : NaN) + "/s";
+          }
+          if (a[0] < lo || a[1] > hi) text += ` · summary coverage ${format(a[0])}–${format(a[1])} s`;
+          make("p", "", text, this.measure);
+        }
+      }
+    }
+    destroy() { this.abort.abort(); this.observer.disconnect(); this.element.remove(); }
+  }
+
   function start(root) {
-    const counts = {received: 0, evicted: 0, oversized: 0, parseErrors: 0, transformErrors: 0, configErrors: 0, appendDrops: 0, omitted: 0, clockErrors: 0, restarts: 0};
+    const counts = {received: 0, evicted: 0, oversized: 0, parseErrors: 0, transformErrors: 0, configErrors: 0, appendDrops: 0, omitted: 0, clockErrors: 0, restarts: 0, graphErrors: 0};
     let capture;
     let timeout = 0;
     let source = null;
@@ -273,6 +549,9 @@
     const uptimeEvent = attr(root, "uptime-event") || "uptime";
     const clock = {value: null, at: 0, synced: false, opened: false, compare: false, segment: 0};
     const restarts = [];
+    let graphBudget = 33554432, clockBudget = 32768, serial = 0;
+    let channels = new Map(), plots = new Map(), groups = new Map();
+    let graphDirty = false, lastDraw = -Infinity;
     const bar = document.createElement("div");
     bar.className = "turbo-sse-bar";
     bar.innerHTML = '<span class="turbo-sse-status" role="status" aria-live="polite"></span><span class="turbo-sse-counts"></span><button type="button" class="turbo-sse-export">Export CSV</button><button type="button" class="turbo-sse-retry" hidden>Retry</button>';
@@ -291,6 +570,10 @@
     }
 
     function setState(value) {
+      if (state === "Connected" && value !== "Connected") {
+        for (const c of channels.values()) c.history.add((performance.now() - started) / 1000, NaN, NaN, clock.segment);
+        invalidate();
+      }
       state = value;
       if (value !== "Connected") clock.synced = false;
       bar.dataset.state = value.toLowerCase();
@@ -305,13 +588,16 @@
     function stats() {
       const u = uptime(performance.now());
       return Object.assign({}, counts, {state, retained: capture ? capture.size : 0, bytes: capture ? capture.bytes : 0, lastEventId: lastId,
-        uptime: Number.isFinite(u) ? u : null, lastUptime: clock.value, segment: clock.segment});
+        uptime: Number.isFinite(u) ? u : null, lastUptime: clock.value, segment: clock.segment,
+        graphs: {bytes: Array.from(channels.values()).reduce((n, c) => n + c.history.bytes, restarts.length * 128),
+          plots: plots.size, series: Array.from(channels.values(), c => ({id: c.id, label: c.label, event: c.event,
+            raw: c.history.raw, compacted: c.history.compacted, evicted: c.history.evicted, bytes: c.history.bytes}))}});
     }
 
     function counters() {
       const s = stats();
       let text = "Captured: " + s.retained + " · Evicted: " + s.evicted;
-      for (const [key, label] of [["omitted", "Omitted"], ["oversized", "Oversized"], ["appendDrops", "Append drops"], ["parseErrors", "JSON errors"], ["transformErrors", "Transform errors"], ["configErrors", "Config errors"], ["clockErrors", "Clock errors"]]) {
+      for (const [key, label] of [["omitted", "Omitted"], ["oversized", "Oversized"], ["appendDrops", "Append drops"], ["parseErrors", "JSON errors"], ["transformErrors", "Transform errors"], ["configErrors", "Config errors"], ["clockErrors", "Clock errors"], ["graphErrors", "Graph errors"]]) {
         if (s[key]) text += " · " + label + ": " + s[key];
       }
       if (counter.textContent !== text) counter.textContent = text;
@@ -324,6 +610,21 @@
       const range = document.createRange();
       range.selectNodeContents(element);
       return range.createContextualFragment(text);
+    }
+
+    function invalidate() {
+      if (dead || !plots.size) return;
+      graphDirty = true;
+      if (!frame) frame = requestAnimationFrame(flush);
+    }
+
+    function extent(view) {
+      let lo = Infinity, hi = -Infinity;
+      for (const p of plots.values()) if (!view || p.view === view) for (const c of p.sources) {
+        const a = c.history.range();
+        if (a) { lo = Math.min(lo, a[0]); hi = Math.max(hi, a[1]); }
+      }
+      return Number.isFinite(lo) ? [lo, hi] : [0, 1];
     }
 
     function flush() {
@@ -349,6 +650,17 @@
         }
       }
       dirty.clear();
+      if (graphDirty) {
+        if (performance.now() - lastDraw < 33) { frame = requestAnimationFrame(flush); return; }
+        graphDirty = false;
+        lastDraw = performance.now();
+        for (const g of groups.values()) if (g.live) { const r = extent(g); g.lo = Math.max(r[0], r[1] - g.window); g.hi = Math.max(g.lo + .001, r[1]); }
+        for (const p of plots.values()) {
+          if (p.failed) continue;
+          try { p.draw(); }
+          catch (error) { counts.graphErrors++; p.failed = true; p.readout.textContent = "Graph error: " + error.message; }
+        }
+      }
     }
 
     function receive(event) {
@@ -369,37 +681,51 @@
             clock.segment++;
             counts.restarts++;
             restarts.push({time: record.elapsed / 1000 - value, detected: record.elapsed / 1000, segment: clock.segment});
-            if (restarts.length > 256) restarts.shift();
+            if (restarts.length > clockBudget / 128) restarts.shift();
+            invalidate();
           }
-          clock.value = value;
-          clock.at = elapsed;
-          clock.synced = true;
-          clock.compare = false;
+          clock.value = value; clock.at = elapsed; clock.synced = true; clock.compare = false;
         }
       }
       const targets = bindings.get(event.type);
       if (!targets) return;
-      let parsed;
-      let attempted = false;
-      let invalid = false;
+      let parsed, attempted = false, invalid = false;
+      const keep = (c, value) => {
+        if (c.tick === counts.received) return c.text;
+        c.tick = counts.received;
+        if (value === undefined) { c.text = undefined; return; }
+        const y = value === null ? NaN : numeric(value);
+        if (value !== null && !Number.isFinite(y)) counts.graphErrors++;
+        c.history.add(record.elapsed / 1000, uptime(elapsed), y, clock.segment);
+        c.text = Number.isFinite(y) ? String(y) : "—";
+        invalidate();
+        return c.text;
+      };
       for (const b of targets) {
         if (!root.contains(b.element)) continue;
+        const c = b.series;
         let value = event.data;
-        if (b.path !== null) {
-          if (!attempted) {
-            attempted = true;
-            try { parsed = JSON.parse(event.data); }
-            catch (_) { invalid = true; counts.parseErrors++; }
+        if (c && c.tick === counts.received) value = c.text;
+        else {
+          if (b.path !== null) {
+            if (!attempted) {
+              attempted = true;
+              try { parsed = JSON.parse(event.data); }
+              catch (_) { invalid = true; counts.parseErrors++; }
+            }
+            if (invalid) { if (c) keep(c, null); continue; }
+            value = select(parsed, b.path);
+            if (value === undefined) { if (c) keep(c, null); continue; }
           }
-          if (invalid) continue;
-          value = select(parsed, b.path);
-          if (value === undefined) continue;
+          try {
+            if (b.transform) value = b.transform(value);
+            if (c) {
+              if (value && typeof value.then === "function") { Promise.resolve(value).catch(() => {}); throw new Error("Asynchronous transform"); }
+              value = keep(c, value);
+            } else value = normalize(value);
+          } catch (_) { counts.transformErrors++; if (c) keep(c, null); continue; }
         }
-        try {
-          if (b.transform) value = b.transform(value);
-          value = normalize(value);
-        } catch (_) { counts.transformErrors++; continue; }
-        if (value === undefined) continue;
+        if (value === undefined || b.directGraph) continue;
         if (b.append) {
           const accepted = b.entries.push({text: value, bytes: value.length * 2}, old => {
             counts.appendDrops++;
@@ -423,7 +749,8 @@
     function refresh() {
       if (frame) cancelAnimationFrame(frame);
       flush();
-      const next = new Map();
+      for (const b of elements.values()) if (b.series && !b.directGraph) b.element.hidden = b.wasHidden;
+      const next = new Map(), nextChannels = new Map(), hosts = new Map(), nextPlots = new Map(), nextGroups = new Map();
       bindings = new Map();
       for (const name of (attr(root, "events") || "").split(/\s+/).filter(Boolean)) {
         try { register(name); } catch (error) { configError(error); }
@@ -435,13 +762,10 @@
           if (element === root) throw new Error("Connection root cannot also be a binding");
           const parentBinding = element.parentElement.closest("[data-sse-event]");
           if (parentBinding && root.contains(parentBinding)) throw new Error("Nested SSE bindings are not supported");
-          const name = attr(element, "event");
-          register(name);
-          const swap = attr(element, "swap") || "replace";
-          const format = attr(element, "format") || "text";
+          const name = attr(element, "event"); register(name);
+          const swap = attr(element, "swap") || "replace", format = attr(element, "format") || "text";
           if (!["replace", "append"].includes(swap) || !["text", "html"].includes(format)) throw new Error("Invalid swap or format");
-          const path = pointer(attr(element, "json"));
-          const fn = attr(element, "transform");
+          const path = pointer(attr(element, "json")), fn = attr(element, "transform");
           let transform = null;
           if (fn !== null) {
             if (!/^[A-Za-z_$][\w$]*$/.test(fn) || !own(window, fn) || typeof window[fn] !== "function") throw new Error("Unknown transform: " + fn);
@@ -455,14 +779,52 @@
               entries: new Ring(limit, APPEND_BYTES), removed: []};
             if (b.append) element.replaceChildren();
           }
-          b.transform = transform;
+          b.transform = transform; b.series = null; b.directGraph = false;
+          const host = element.closest("[data-sse-graph]");
+          if (host && root.contains(host)) {
+            if (host === root || host.parentElement.closest("[data-sse-graph]")) throw new Error("Nested/root graph containers are not supported");
+            if (swap !== "replace" || format !== "text") throw new Error("Graphs require replace/text bindings");
+            const windowSeconds = option(host, "window", 60);
+            if (windowSeconds <= 0) throw new Error("Graph window must be positive");
+            const unit = attr(element, "unit") || "", key = JSON.stringify([name, path, fn, unit]);
+            let c = nextChannels.get(key) || channels.get(key);
+            if (!c || c.transform !== transform) c = {id: ++serial, event: name, path: attr(element, "json") || "", fn: fn || "", transform, unit,
+              label: attr(element, "label") || name, history: new History(graphBudget - clockBudget), tick: -1};
+            if (!hosts.has(host)) hosts.set(host, []);
+            const series = hosts.get(host);
+            if (series.length && series[0].unit !== unit) throw new Error("Use synchronized panels for different units");
+            if (!nextChannels.has(key) && (nextChannels.size + 1) * 4096 > graphBudget - clockBudget) throw new Error("Graph budget too small for series count");
+            nextChannels.set(key, c);
+            if (!series.includes(c)) series.push(c);
+            b.series = c; b.directGraph = element === host;
+            if (!b.directGraph) { b.wasHidden = element.hidden; element.hidden = true; }
+          }
           next.set(element, b);
           if (!bindings.has(name)) bindings.set(name, []);
           bindings.get(name).push(b);
         } catch (error) { configError(error); }
       }
-      elements = next;
-      counters();
+      channels = nextChannels;
+      for (const c of channels.values()) c.history.resize(Math.floor((graphBudget - clockBudget) / channels.size));
+      for (const [host, series] of hosts) {
+        if (!series.length) continue;
+        try {
+          const key = attr(host, "sync") || host;
+          let view = nextGroups.get(key) || groups.get(key);
+          if (!view) view = {lo: 0, hi: 1, live: true, window: option(host, "window", 60), history: [], cursor: null, a: null, b: null};
+          nextGroups.set(key, view);
+          const signature = JSON.stringify([series.map(c => c.id), attr(host, "y-min"), attr(host, "y-max"), attr(host, "window"), attr(host, "label")]);
+          let plot = plots.get(host);
+          if (plot && (plot.signature !== signature || plot.view !== view)) { plot.destroy(); plot = null; }
+          if (!plot) plot = new Plot(host, series, view, {invalidate, extent, restarts: () => restarts,
+            cursor: g => { for (const p of plots.values()) if (p.view === g) p.inspect(); }, export: showExports});
+          plot.signature = signature;
+          nextPlots.set(host, plot);
+        } catch (error) { configError(error); }
+      }
+      for (const [host, plot] of plots) if (!nextPlots.has(host)) plot.destroy();
+      plots = nextPlots; groups = nextGroups; elements = next;
+      invalidate(); counters();
     }
 
     function closeSource() {
@@ -514,26 +876,128 @@
       } catch (error) { configError(error); setState("Disconnected"); }
     }
 
+    const rawHeader = "received_at,elapsed_ms,event,last_event_id,data";
+    const csvRow = values => values.map(v => '"' + (v === null || v === undefined || (typeof v === "number" && !Number.isFinite(v)) ? "" : String(v)).replace(/"/g, '""') + '"').join(",");
+    const rawRow = row => csvRow([new Date(row.time).toISOString(), row.elapsed.toFixed(3), row.event, row.id, row.data]);
+    const stamp = () => new Date().toISOString().replace(/[:.]/g, "-");
+    let exportPanel = null, exportVersion = 0, exportBusy = false, exportURLs = [];
+
+    function closeExports() {
+      exportVersion++;
+      for (const url of exportURLs) URL.revokeObjectURL(url);
+      exportURLs = [];
+      if (exportPanel) exportPanel.remove();
+      exportPanel = null;
+    }
+
     function exportCSV() {
-      const quote = value => '"' + String(value).replace(/"/g, '""') + '"';
-      const lines = ["received_at,elapsed_ms,event,last_event_id,data"];
-      capture.each(row => lines.push([new Date(row.time).toISOString(), row.elapsed.toFixed(3), row.event, row.id, row.data].map(quote).join(",")));
+      const lines = [rawHeader];
+      capture.each(row => lines.push(rawRow(row)));
       const csv = lines.join("\r\n") + "\r\n";
       const url = URL.createObjectURL(new Blob([csv], {type: "text/csv;charset=utf-8"}));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "sse-" + new Date().toISOString().replace(/[:.]/g, "-") + ".csv";
-      link.click();
+      const link = document.createElement("a"); link.href = url; link.download = "sse-" + stamp() + ".csv"; link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       return csv;
     }
 
+    async function showExports(selected, interval) {
+      if (exportBusy) return;
+      if (!channels.size) { exportCSV(); return; }
+      closeExports();
+      exportBusy = true;
+      const version = exportVersion, prefix = stamp(), lo = interval ? interval[0] : -Infinity, hi = interval ? interval[1] : Infinity;
+      const limit = Math.min(268435456, Math.max(8388608, graphBudget * 8 + capture.budget * 4));
+      const panel = exportPanel = make("section", "turbo-sse-export-panel", undefined);
+      panel.dataset.state = "preparing"; panel.setAttribute("aria-label", "CSV exports");
+      bar.after(panel);
+      const close = make("button", "", "Close export", panel); close.type = "button"; close.addEventListener("click", closeExports);
+      const status = make("p", "", "Preparing a snapshot of retained data…", panel); status.setAttribute("role", "status");
+      const links = document.createDocumentFragment(), snapshots = [];
+      let memory = 0, rowsMade = 0;
+      const check = bytes => { if (memory + bytes > limit) throw new Error("Export exceeds its memory budget. Use Export view for a smaller interval."); };
+      const valid = () => !dead && version === exportVersion;
+      try {
+        const raw = [];
+        if (!selected) { check(capture.bytes); capture.each(row => raw.push(row)); memory += capture.bytes; }
+        const sourceList = selected || Array.from(channels.values());
+        // Check before copying. Snapshot trees and their current chunks are
+        // independent of live compaction, so all files share one cutoff.
+        check(sourceList.reduce((n, c) => n + c.history.bytes, 0));
+        for (const c of sourceList) {
+          const h = c.history.copy(lo, hi); memory += h.bytes;
+          snapshots.push({source: {id: c.id, label: c.label, event: c.event, path: c.path, fn: c.fn, unit: c.unit}, history: h});
+        }
+        const markers = restarts.map(m => ({...m})).sort((a, b) => a.time - b.time);
+        const encoder = new TextEncoder();
+        const file = async (name, header, rows, description) => {
+          let chunk = header + "\r\n", size = 0, parts = [];
+          const append = () => {
+            if (!chunk) return;
+            const part = encoder.encode(chunk); check(part.byteLength); memory += part.byteLength; size += part.byteLength; parts.push(part); chunk = "";
+          };
+          for (const line of rows) {
+            chunk += line + "\r\n";
+            if (chunk.length >= 32768) append();
+            if (++rowsMade % 1024 === 0) {
+              status.textContent = "Preparing CSV · " + rowsMade + " rows";
+              await new Promise(resolve => setTimeout(resolve, 0));
+              if (!valid()) return;
+            }
+          }
+          append(); check(size); // Allow the Blob construction's transient copy.
+          const blob = new Blob(parts, {type: "text/csv;charset=utf-8"}); parts = [];
+          const url = URL.createObjectURL(blob); exportURLs.push(url);
+          const row = make("p", "", undefined, links), link = make("a", "", name, row);
+          link.href = url; link.download = prefix + "-" + name;
+          make("small", "", " · " + description + " · " + size + " bytes", row);
+          await new Promise(resolve => setTimeout(resolve, 0));
+        };
+        if (!selected) {
+          await file("raw-events.csv", rawHeader, (function* () { for (const row of raw) yield rawRow(row); })(), raw.length + " retained original events");
+          memory -= raw.reduce((n, row) => n + row.bytes, 0); raw.length = 0;
+        }
+        const header = "series,event,json_pointer,transform,unit,kind,elapsed_start_s,elapsed_end_s,uptime_start_s,uptime_end_s,segment,value,count,min,max,mean,stddev,first,last,min_elapsed_s,max_elapsed_s,gaps,detected_elapsed_s";
+        for (const item of snapshots) {
+          if (!valid()) return;
+          const c = item.source, h = item.history, a = h.range(lo, hi), meta = [c.label, c.event, c.path, c.fn, c.unit];
+          const relevant = markers.filter(m => m.detected <= hi && (!a || m.segment >= a[4] || m.detected >= a[0]));
+          const rows = function* () {
+            let index = 0;
+            const markerRow = m => csvRow([...meta, "restart", m.time, m.time, 0, 0, m.segment, null, 0, null, null, null, null, null, null, null, null, 0, m.detected]);
+            for (const point of h.rows(lo, hi)) {
+              const b = point.a;
+              while (index < relevant.length && relevant[index].time <= b[0]) yield markerRow(relevant[index++]);
+              const kind = !b[5] ? "gap" : point.summary ? "summary" : "sample";
+              yield csvRow([...meta, kind, b[0], b[1], b[2], b[3], b[4], kind === "sample" ? b[8] : null, b[5],
+                point.summary && b[5] ? b[6] : null, point.summary && b[5] ? b[7] : null,
+                point.summary && b[5] ? b[8] : null, point.summary && b[5] ? Math.sqrt(Math.max(0, b[9] / b[5])) : null,
+                point.summary && b[5] ? b[10] : null, point.summary && b[5] ? b[11] : null,
+                point.summary && b[5] ? b[12] : null, point.summary && b[5] ? b[13] : null, b[14], null]);
+            }
+            while (index < relevant.length) yield markerRow(relevant[index++]);
+          };
+          const name = "s" + String(c.id).padStart(2, "0") + "-" + (c.label.replace(/[^a-z0-9_-]+/gi, "-").slice(0, 64) || "series") + ".csv";
+          await file(name, header, rows(), a ? `${a[5]} samples · ${format(a[0])}–${format(a[1])} s · samples/summaries explicitly identified` : "No retained samples");
+          memory -= h.bytes; item.history = null;
+        }
+        if (valid()) { panel.append(links); status.textContent = "Snapshot ready. Each file contains its retained history and resolution."; panel.dataset.state = "ready"; }
+      } catch (error) {
+        if (valid()) {
+          for (const url of exportURLs) URL.revokeObjectURL(url);
+          exportURLs = []; status.textContent = error.message; panel.dataset.state = "error";
+        }
+      } finally { snapshots.length = 0; exportBusy = false; }
+    }
+
+    const exportClick = () => showExports();
     const retry = () => connect(true);
-    exportButton.addEventListener("click", exportCSV);
+    exportButton.addEventListener("click", exportClick);
     retryButton.addEventListener("click", retry);
     try {
       capture = new Ring(number(root, "buffer-events", 10000, 1), number(root, "buffer-bytes", 2097152, 1));
       timeout = number(root, "timeout", 0, 0);
+      graphBudget = number(root, "graph-bytes", 33554432, 8192);
+      clockBudget = Math.min(32768, Math.floor(graphBudget / 4));
       try { register(uptimeEvent); } catch (error) { configError(error); }
       refresh();
       connect(false);
@@ -552,9 +1016,13 @@
         clearTimeout(retryTimer);
         clearInterval(counterTimer);
         cancelAnimationFrame(frame);
-        exportButton.removeEventListener("click", exportCSV);
+        exportButton.removeEventListener("click", exportClick);
         retryButton.removeEventListener("click", retry);
+        closeExports();
         bar.remove();
+        for (const p of plots.values()) p.destroy();
+        for (const b of elements.values()) if (b.series && !b.directGraph) b.element.hidden = b.wasHidden;
+        plots.clear(); channels.clear(); groups.clear(); restarts.length = 0;
         dirty.clear();
         bindings.clear();
         elements.clear();

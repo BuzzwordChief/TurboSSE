@@ -30,3 +30,27 @@
 }
 .turbo-sse-bar button:focus-visible { outline: 2px solid #1769bd; outline-offset: 2px; }
 .turbo-sse-bar [hidden] { display: none; }
+.turbo-sse-plot { color: #243747; background: #fff; border: 1px solid #cad3dc; border-radius: 4px; font: 12px/1.5 system-ui,sans-serif; min-width: 0; }
+.turbo-sse-tools { display: flex; flex-wrap: wrap; gap: .35rem; padding: .5rem .65rem; border-bottom: 1px solid #e1e6eb; }
+.turbo-sse-plot button, .turbo-sse-plot select { color: inherit; background: #fff; border: 1px solid #b8c4ce; border-radius: 3px; font: inherit; padding: .2rem .55rem; cursor: pointer; }
+.turbo-sse-plot button[aria-pressed="true"] { background: #eaf1f8; border-color: #6590b5; }
+.turbo-sse-plot :focus-visible { outline: 2px solid #235d9c; outline-offset: 2px; }
+.turbo-sse-area { position: relative; height: var(--turbo-sse-height,260px); }
+.turbo-sse-area canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.turbo-sse-cursor { position: absolute; border-left: 1px dashed #465d70; pointer-events: none; }
+.turbo-sse-cross-y { position: absolute; border-top: 1px dashed #465d70; pointer-events: none; }
+.turbo-sse-selection { position: absolute; background: #235d9c18; border-left: 1px solid #235d9c; border-right: 1px solid #235d9c; pointer-events: none; }
+.turbo-sse-legend { display: flex; flex-wrap: wrap; gap: .3rem .8rem; padding: .4rem .75rem; }
+.turbo-sse-legend button { border: 0; border-left: 3px solid var(--series-color); text-align: left; }
+.turbo-sse-legend button[aria-pressed="true"] { background: transparent; border-color: var(--series-color); }
+.turbo-sse-legend button[aria-pressed="false"] { opacity: .45; }
+.turbo-sse-series-name { margin-right: .6rem; font-weight: 600; }
+.turbo-sse-series-value, .turbo-sse-readout, .turbo-sse-measure { font-variant-numeric: tabular-nums; }
+.turbo-sse-readout { padding: .3rem .75rem; color: #526779; border-top: 1px solid #e1e6eb; }
+.turbo-sse-measure { padding: 0 .75rem; background: #f5f7f9; }
+.turbo-sse-measure p { margin: 0; padding: .4rem 0; }
+.turbo-sse-plot [hidden] { display: none; }
+.turbo-sse-export-panel { margin: .75rem 0; padding: .75rem 1rem; border: 1px solid #b8c4ce; background: #f4f7fa; color: #243747; font: 13px/1.5 system-ui,sans-serif; }
+.turbo-sse-export-panel button { float: right; cursor: pointer; }
+.turbo-sse-export-panel p { margin: .3rem 0; overflow-wrap: anywhere; }
+.turbo-sse-export-panel a { color: #205a94; }

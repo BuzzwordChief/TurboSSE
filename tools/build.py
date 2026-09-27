@@ -9,7 +9,7 @@ import rjsmin
 
 ROOT = Path(__file__).resolve().parents[1]
 SIZE_TARGET = 8192
-SIZE_BUDGET = 12288
+SIZE_BUDGET = 16384
 
 
 def c_header(contents, compressed=False):
