@@ -1,0 +1,199 @@
+{
+  "mode": "live observations",
+  "status": "interrupted after user requested a 30-minute limit",
+  "reported_window_seconds": 1800,
+  "rate": 100,
+  "channels": 8,
+  "history_budget": 8388608,
+  "tested_commit": "fed21b6",
+  "asset_sha256": "7c2adc7717959893ef9a22f0645a18492561247a2a18113f7a3297f6a802c601",
+  "samples": [
+    {
+      "seconds": 0,
+      "received": 3,
+      "accounted_history_bytes": 30720,
+      "heap_after_gc": 1278716
+    },
+    {
+      "seconds": 60,
+      "received": 6064,
+      "accounted_history_bytes": 1341440,
+      "heap_after_gc": 2438292
+    },
+    {
+      "seconds": 120,
+      "received": 12136,
+      "accounted_history_bytes": 2686976,
+      "heap_after_gc": 2790664
+    },
+    {
+      "seconds": 180,
+      "received": 18185,
+      "accounted_history_bytes": 4038656,
+      "heap_after_gc": 2956484
+    },
+    {
+      "seconds": 240,
+      "received": 24253,
+      "accounted_history_bytes": 5380096,
+      "heap_after_gc": 3114744
+    },
+    {
+      "seconds": 300,
+      "received": 30309,
+      "accounted_history_bytes": 6729728,
+      "heap_after_gc": 3283264
+    },
+    {
+      "seconds": 360,
+      "received": 36380,
+      "accounted_history_bytes": 8079360,
+      "heap_after_gc": 3447108
+    },
+    {
+      "seconds": 420,
+      "received": 42428,
+      "accounted_history_bytes": 8351744,
+      "heap_after_gc": 3582048
+    },
+    {
+      "seconds": 480,
+      "received": 48492,
+      "accounted_history_bytes": 8355840,
+      "heap_after_gc": 3626812
+    },
+    {
+      "seconds": 540,
+      "received": 54546,
+      "accounted_history_bytes": 8355840,
+      "heap_after_gc": 3665180
+    },
+    {
+      "seconds": 600,
+      "received": 60614,
+      "accounted_history_bytes": 8347648,
+      "heap_after_gc": 3693360
+    },
+    {
+      "seconds": 660,
+      "received": 66667,
+      "accounted_history_bytes": 8339456,
+      "heap_after_gc": 4399416
+    },
+    {
+      "seconds": 720,
+      "received": 72737,
+      "accounted_history_bytes": 8333312,
+      "heap_after_gc": 4409244
+    },
+    {
+      "seconds": 780,
+      "received": 78788,
+      "accounted_history_bytes": 8353792,
+      "heap_after_gc": 4421780
+    },
+    {
+      "seconds": 840,
+      "received": 84853,
+      "accounted_history_bytes": 8351744,
+      "heap_after_gc": 4438216
+    },
+    {
+      "seconds": 900,
+      "received": 90921,
+      "accounted_history_bytes": 8337408,
+      "heap_after_gc": 4440484
+    },
+    {
+      "seconds": 960,
+      "received": 96966,
+      "accounted_history_bytes": 8335360,
+      "heap_after_gc": 4454364
+    },
+    {
+      "seconds": 1020,
+      "received": 103034,
+      "accounted_history_bytes": 8351744,
+      "heap_after_gc": 5849468
+    },
+    {
+      "seconds": 1080,
+      "received": 109102,
+      "accounted_history_bytes": 8333312,
+      "heap_after_gc": 4468576
+    },
+    {
+      "seconds": 1140,
+      "received": 115151,
+      "accounted_history_bytes": 8343552,
+      "heap_after_gc": 5497992
+    },
+    {
+      "seconds": 1200,
+      "received": 121203,
+      "accounted_history_bytes": 8353792,
+      "heap_after_gc": 4482792
+    },
+    {
+      "seconds": 1260,
+      "received": 127281,
+      "accounted_history_bytes": 8337408,
+      "heap_after_gc": 4483796
+    },
+    {
+      "seconds": 1320,
+      "received": 133329,
+      "accounted_history_bytes": 8353792,
+      "heap_after_gc": 4495060
+    },
+    {
+      "seconds": 1380,
+      "received": 139397,
+      "accounted_history_bytes": 8343552,
+      "heap_after_gc": 4513516
+    },
+    {
+      "seconds": 1440,
+      "received": 145447,
+      "accounted_history_bytes": 8351744,
+      "heap_after_gc": 4518684
+    },
+    {
+      "seconds": 1500,
+      "received": 151518,
+      "accounted_history_bytes": 8337408,
+      "heap_after_gc": 4522344
+    },
+    {
+      "seconds": 1560,
+      "received": 157568,
+      "accounted_history_bytes": 8345600,
+      "heap_after_gc": 5770752
+    },
+    {
+      "seconds": 1620,
+      "received": 163637,
+      "accounted_history_bytes": 8353792,
+      "heap_after_gc": 4534648
+    },
+    {
+      "seconds": 1680,
+      "received": 169686,
+      "accounted_history_bytes": 8339456,
+      "heap_after_gc": 4541008
+    },
+    {
+      "seconds": 1740,
+      "received": 175751,
+      "accounted_history_bytes": 8355840,
+      "heap_after_gc": 4535864
+    },
+    {
+      "seconds": 1800,
+      "received": 181820,
+      "accounted_history_bytes": 8337408,
+      "heap_after_gc": 4538912
+    }
+  ],
+  "note": "First 30 minutes of the earlier live SSE/Canvas/export soak. The longer process was stopped; final end-of-run assertions and timing summaries were not collected. This is observation evidence, not a completed final-build benchmark. See the shorter completed soak and numerical/browser tests for final verification."
+}

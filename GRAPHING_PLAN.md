@@ -1,6 +1,6 @@
 # TurboSSE: graphing and offline inspection
 
-Status: implementation plan; no runtime changes made.
+Status: implemented. README.md documents the shipped interface; VALIDATION.md records verification and limits. The current complete bundle exceeds the soft 8 KiB target, with a 16 KiB regression ceiling.
 
 ## 1. What we are building
 
@@ -116,7 +116,7 @@ There is no age-based expiry of raw samples. Keep them exact while space permits
 
 - Time coverage, first/last values and valid sample count.
 - Minimum/maximum values and their original times.
-- Sample-weighted mean and a stable variance accumulator for standard deviation/RMS.
+- Sample-weighted mean and a stable mergeable deviation accumulator for standard deviation/RMS.
 - Gap information and inferred restart boundaries.
 
 Merge means using counts, not by averaging averages equally. Do not merge ordinary summaries across inferred restart boundaries or draw uninterrupted lines across known gaps. Prefer coarser historical coverage over deleting it. Keep metadata bounded too; if its minimum state cannot fit, expire the oldest complete historical segment with explicit coverage accounting.
@@ -182,7 +182,7 @@ Acceptance checks:
 - Reference calculations verify count-weighted means, variance, extrema/timestamps and no double counting through repeated compaction. A single narrow spike survives as an extremum. Raw samples remain exact while memory permits.
 - Toolbar uptime advances from one report, resynchronizes with later reports, stays unknown before synchronization, and uses the last reported value for the first post-reconnect comparison. Test malformed values and the accepted missed-restart case.
 - Chromium, Firefox and WebKit cover ordinary HTTP, navigation, export downloads, resize/high-DPI, keyboard/touch, hidden tabs, refresh, removal and destroy/reinit. Release buffers, observers and handlers without duplicate connections.
-- Simulate the eight-hour reference workload using bounded generators, then run a real multi-hour SSE/graph soak with periodic exports. Measure retained memory, compaction/query time and interaction latency. Target responsive cursors, ordinary pan/zoom within 50 ms, and at least 20 live redraws/second for four visible panels on the recorded reference machine.
+- Simulate the eight-hour reference workload using bounded generators, then run live SSE/graph checks with periodic exports, capped at 30 minutes as requested. Measure retained memory, compaction/query time and interaction latency. Target responsive cursors, ordinary pan/zoom within 50 ms, and at least 20 live redraws/second for four visible panels on the recorded reference machine.
 - Measure complete compressed size at each milestone. The current baseline is **4,438 gzip bytes**; prioritize shared code and the focused scope to approach 8 KiB, reporting any justified overage. Verify deterministic builds and exact C/C++ embedded-asset round trips.
 
 The result should have one clear export workflow: original events in their existing CSV, each plotted series in its own CSV, and enough timing/statistical context to inspect the retained data offline.

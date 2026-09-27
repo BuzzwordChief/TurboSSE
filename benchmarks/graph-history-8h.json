@@ -1,0 +1,111 @@
+{
+  "mode": "history",
+  "seconds": 28800,
+  "rate": 100,
+  "channels": 8,
+  "values": 23040000,
+  "ingest_ms": 1682.7000000476837,
+  "peak_accounted_bytes": 33554432,
+  "series": [
+    {
+      "count": 2880000,
+      "min": -499,
+      "max": 999,
+      "mean": 0.005044727546564912,
+      "variance": 13.05658281924285,
+      "raw": 144384,
+      "compacted": 2735616,
+      "bytes": 4191488
+    },
+    {
+      "count": 2880000,
+      "min": -500,
+      "max": 1000,
+      "mean": 0.10504271365767602,
+      "variance": 13.08576429094673,
+      "raw": 144384,
+      "compacted": 2735616,
+      "bytes": 4191488
+    },
+    {
+      "count": 2880000,
+      "min": -501,
+      "max": 1001,
+      "mean": 0.20504069976878717,
+      "variance": 13.114986443198053,
+      "raw": 144384,
+      "compacted": 2735616,
+      "bytes": 4191488
+    },
+    {
+      "count": 2880000,
+      "min": -502,
+      "max": 1002,
+      "mean": 0.30503868587989824,
+      "variance": 13.144249275996799,
+      "raw": 144384,
+      "compacted": 2735616,
+      "bytes": 4191488
+    },
+    {
+      "count": 2880000,
+      "min": -503,
+      "max": 1003,
+      "mean": 0.40503667199100946,
+      "variance": 13.173552789343006,
+      "raw": 144384,
+      "compacted": 2735616,
+      "bytes": 4191488
+    },
+    {
+      "count": 2880000,
+      "min": -504,
+      "max": 1004,
+      "mean": 0.5050346581021204,
+      "variance": 13.202896983236668,
+      "raw": 144384,
+      "compacted": 2735616,
+      "bytes": 4191488
+    },
+    {
+      "count": 2880000,
+      "min": -505,
+      "max": 1005,
+      "mean": 0.6050326442132317,
+      "variance": 13.232281857677753,
+      "raw": 144384,
+      "compacted": 2735616,
+      "bytes": 4191488
+    },
+    {
+      "count": 2880000,
+      "min": -506,
+      "max": 1006,
+      "mean": 0.7050306303243428,
+      "variance": 13.261707412666293,
+      "raw": 144384,
+      "compacted": 2735616,
+      "bytes": 4191488
+    }
+  ],
+  "max_draw_records": 8352,
+  "heap": {
+    "usedSize": 5831612,
+    "totalSize": 7372800,
+    "embedderHeapUsedSize": 268112,
+    "backingStorageSize": 30744535
+  },
+  "query": {
+    "p95_ms": 0.10000002384185791,
+    "max_ms": 2
+  },
+  "cursor": {
+    "p95_ms": 0,
+    "max_ms": 0.10000002384185791
+  },
+  "browser": "140.0.7339.16",
+  "python": "3.9.6",
+  "platform": "macOS-27.0-arm64-arm-64bit",
+  "asset_sha256": "96e070a0560cbf4d47dedd4c23376c0b9c37c23beb7c6b88dcda2f520396a179",
+  "note": "History mode is accelerated production-store ingestion, not wall-clock streaming. Soak is actual SSE/Canvas/export elapsed time. Callback timings exclude paint; heap counters do not describe total process memory."
+}
