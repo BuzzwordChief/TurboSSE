@@ -314,6 +314,49 @@ class GraphCases:
             self.page.keyboard.press('Enter')
             self.assertEqual(self.page.evaluate('document.activeElement.dataset.action'), 'Back')
 
+    def test_cut_off_key_legend_fades_and_shows_in_full_on_hover(self):
+        self.open('<div id="n" data-sse-graph data-sse-event="v" style="width:520px"></div>'
+                  '<div id="w" data-sse-graph data-sse-event="v" style="width:1100px"></div>')
+        self.case.emit('v', '1'); self.received(1)
+        narrow, wide = self.page.locator('#n .turbo-sse-tools > span'), self.page.locator('#w .turbo-sse-tools > span')
+        full = self.page.locator('#n .turbo-sse-hint + .turbo-sse-hint')
+        box = self.page.locator('#n canvas').bounding_box()
+        self.page.mouse.click(box['x'] + 300, box['y'] + 120)
+        # A legend that does not fit is cut off and fades out; a legend that fits shows plainly.
+        expect(narrow).to_have_attribute('data-more', '')
+        expect(wide).not_to_have_attribute('data-more', '')
+        self.assertNotEqual(narrow.evaluate('e => getComputedStyle(e).maskImage'), 'none')
+        expect(full).to_be_hidden()
+        self.assertEqual(full.get_attribute('aria-hidden'), 'true')
+        height = self.page.evaluate('document.querySelector("#n .turbo-sse-tools").offsetHeight')
+        # Hovering shows the full legend over the plot without changing the band.
+        legend = self.page.locator('#n .turbo-sse-hint').first.bounding_box()
+        self.page.mouse.move(legend['x'] + 40, legend['y'] + legend['height'] / 2)
+        expect(full).to_be_visible()
+        self.assertGreater(full.bounding_box()['height'], legend['height'])
+        self.assertEqual(self.page.evaluate('document.querySelector("#n .turbo-sse-tools").offsetHeight'), height)
+        self.page.mouse.move(box['x'] + 300, box['y'] + 150)
+        expect(full).to_be_hidden()
+
+    def test_measuring_keeps_the_page_layout(self):
+        self.open('<div id="a" data-sse-graph data-sse-sync="s"><span data-sse-event="v"></span><span data-sse-event="w"></span></div>'
+                  '<div id="b" data-sse-graph data-sse-sync="s" data-sse-event="x"></div><p id="after">After</p>')
+        for i in range(12):
+            self.case.emit('v', str(i)); self.case.emit('w', str(i)); self.case.emit('x', str(i)); self.page.wait_for_timeout(10)
+        self.received(36)
+        layout = '[...document.querySelectorAll("#b, #after, #a .turbo-sse-measure tr")].map(e => Math.round(e.getBoundingClientRect().top))'
+        # Idle: the A/B line prompts for a measurement, and each series already has its table row.
+        expect(self.page.locator('#a .turbo-sse-measure p')).to_contain_text('Shift-drag')
+        self.assertEqual(self.page.locator('#a .turbo-sse-measure tbody tr').count(), 2)
+        before = self.page.evaluate(layout)
+        box = self.page.locator('#a canvas').bounding_box()
+        self.page.mouse.click(box['x'] + 300, box['y'] + 100)
+        self.page.keyboard.down('Shift'); self.page.mouse.move(box['x'] + 150, box['y'] + 100); self.page.mouse.down()
+        self.page.mouse.move(box['x'] + 500, box['y'] + 100, steps=5); self.page.mouse.up(); self.page.keyboard.up('Shift')
+        expect(self.page.locator('#b .turbo-sse-measure')).to_contain_text('RMS')
+        self.frames()
+        self.assertEqual(self.page.evaluate(layout), before)
+
     def test_marker_labels_text_selection_and_shortcuts_after_clicks(self):
         self.open('<div id="a" data-sse-graph data-sse-event="v" data-sse-label="Volts" data-sse-unit="V"></div>')
         for i in range(12):
@@ -336,7 +379,7 @@ class GraphCases:
         self.assertGreater(a, b)
         # Measurement, readout and legend text can be selected, and the selection survives redraws.
         # Drags start inside the text: Firefox does not start a selection on the legend's color swatch.
-        for target in (measure.locator('p').nth(1), self.page.locator('#a .turbo-sse-readout'), legend.first):
+        for target in (measure.locator('p').first, self.page.locator('#a .turbo-sse-readout'), legend.first):
             r = target.bounding_box()
             self.page.mouse.move(r['x'] + 16, r['y'] + r['height'] / 2); self.page.mouse.down()
             self.page.mouse.move(r['x'] + min(r['width'] - 2, 200), r['y'] + r['height'] / 2, steps=6); self.page.mouse.up()
@@ -430,7 +473,7 @@ class GraphCases:
         self.page.keyboard.up('Shift'); self.frames()
         self.page.mouse.move(*spot); zoomed, text = self.pointer_y()
         self.assertNotAlmostEqual(zoomed, fitted, delta=abs(fitted) * .01 + 1e-9, msg=text)
-        self.assertEqual(self.page.locator('#a .turbo-sse-plot > header button').all_inner_texts(), ['FitF', 'Back', 'Export view'])
+        self.assertEqual(self.page.locator('#a .turbo-sse-tools button').all_inner_texts(), ['FitF', 'Back', 'Export view'])
 
     def test_restart_rows_and_unsynchronized_times(self):
         self.open('<div data-sse-graph data-sse-event="v"></div>')

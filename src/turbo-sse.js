@@ -317,7 +317,7 @@
       this.host = host; this.sources = sources; this.view = view; this.hooks = hooks;
       this.min = option(host, "y-min", null); this.max = option(host, "y-max", null);
       if (this.min !== null && this.max !== null && this.min >= this.max) throw new Error("Graph y-min must be below y-max");
-      this.hidden = new Set(); this.top = 24; this.width = this.height = 1;
+      this.hidden = new Set(); this.top = 24; this.left = 64; this.width = this.height = 1;
       this.abort = new AbortController();
       const listen = (node, name, fn, opts = {}) => node.addEventListener(name, fn, {...opts, signal: this.abort.signal});
       const title = attr(host, "title") || attr(host, "label") || sources.map(c => c.label).join(", ");
@@ -325,16 +325,18 @@
       this.element.setAttribute("aria-label", title);
       const header = make("header", "", undefined, this.element);
       make("strong", "", title, header);
-      // Plot controls sit in the header; the band above the data holds only the key legend.
-      this.controls = make("div", "", undefined, header); this.controls.setAttribute("role", "toolbar");
       make("span", "", [...new Set(sources.map(c => c.unit).filter(Boolean))].join(", "), header);
+      // The one-row band above the data holds the key legend on the left and the plot controls on the right.
+      // A legend that does not fit is cut off and fades out; a hidden full copy appears while it is hovered.
       this.tools = make("div", "turbo-sse-tools");
-      const hint = make("div", "turbo-sse-hint", undefined, this.tools);
+      const keys = make("span", "", undefined, this.tools), hint = make("div", "turbo-sse-hint", undefined, keys);
       for (const [keys, text] of [["Drag|←|→", "pan"], ["Wheel|+|−", "zoom"], ["Right-drag", "zoom range"], ["Shift|Drag", "measure"], ["A|B", "markers"], ["Esc", "clear"]]) {
         const item = make("span", "", undefined, hint);
         keys.split("|").forEach((key, i) => { if (i) item.append(keys[0] == "S" ? "+" : " "); make("kbd", "", key, item); });
         item.append(" " + text);
       }
+      keys.append(hint.cloneNode(true)); keys.lastChild.setAttribute("aria-hidden", "true");
+      this.controls = make("div", "", undefined, this.tools); this.controls.setAttribute("role", "toolbar");
       const live = make("label", "", undefined, this.controls);
       this.liveBox = make("input", "", undefined, live); this.liveBox.type = "checkbox"; this.liveBox.dataset.action = "Live"; live.append("Live"); make("kbd", "", "L", live);
       listen(this.liveBox, "change", () => this.live(this.liveBox.checked));
@@ -443,7 +445,10 @@
       });
       // A press or focus inside the plot activates it; anywhere else deactivates it.
       for (const type of ["pointerdown", "focusin"]) listen(document, type, event => this.activate(this.element.contains(event.target)));
-      this.observer = new ResizeObserver(() => { this.top = Math.max(16, this.tools.offsetHeight + 6); hooks.invalidate(); });
+      this.observer = new ResizeObserver(() => {
+        keys.toggleAttribute("data-more", keys.scrollWidth > keys.clientWidth);
+        this.top = Math.max(16, this.tools.offsetHeight + 6); hooks.invalidate();
+      });
       this.observer.observe(this.area); this.observer.observe(this.tools);
     }
     activate(on = true) {
@@ -479,8 +484,8 @@
       Object.assign(this.view, {lo, hi: Math.max(hi, lo + .0001), live: false});
       this.hooks.invalidate();
     }
-    time(event) { const rect = this.canvas.getBoundingClientRect(); return this.view.lo + Math.max(0, Math.min(this.width, event.clientX - rect.left - 64)) / this.width * (this.view.hi - this.view.lo); }
-    x(t) { return 64 + (t - this.view.lo) / (this.view.hi - this.view.lo) * this.width; }
+    time(event) { const rect = this.canvas.getBoundingClientRect(); return this.view.lo + Math.max(0, Math.min(this.width, event.clientX - rect.left - this.left)) / this.width * (this.view.hi - this.view.lo); }
+    x(t) { return this.left + (t - this.view.lo) / (this.view.hi - this.view.lo) * this.width; }
     value(y) { const f = Math.max(0, Math.min(1, (y - this.top) / this.height)); return this.yMax * (1 - f) + this.yMin * f; }
     band(a, b, zoom) {
       this.selection.toggleAttribute("data-zoom", !!zoom);
@@ -489,7 +494,7 @@
       if (b === null) b = a;
       this.selection.hidden = Math.max(a, b) < this.view.lo || Math.min(a, b) > this.view.hi;
       if (this.selection.hidden) return;
-      const x = Math.max(64, Math.min(this.x(a), this.x(b))), end = Math.min(64 + this.width, Math.max(this.x(a), this.x(b)));
+      const x = Math.max(this.left, Math.min(this.x(a), this.x(b))), end = Math.min(this.left + this.width, Math.max(this.x(a), this.x(b)));
       this.selection.style.cssText = `left:${x}px;top:${this.top}px;width:${Math.max(0,end-x)}px;height:${this.height}px`;
     }
     inspect() {
@@ -497,7 +502,7 @@
       this.cursor.hidden = t === null || t < g.lo || t > g.hi;
       if (!this.cursor.hidden) this.cursor.style.cssText = `left:${this.x(t)}px;top:${this.top}px;height:${this.height}px`;
       this.horizontal.hidden = this.cursor.hidden || this.cursorY == null;
-      if (!this.horizontal.hidden) this.horizontal.style.cssText = `left:64px;top:${this.cursorY}px;width:${this.width}px`;
+      if (!this.horizontal.hidden) this.horizontal.style.cssText = `left:${this.left}px;top:${this.cursorY}px;width:${this.width}px`;
       this.sources.forEach((c, i) => {
         const point = c.history.nearest(t === null ? g.hi : t, t === null), a = point && point.a;
         put(this.values[i], !a || !a[5] ? "—" : (point.summary ? `${format(a[6])}…${format(a[7])} (mean ${format(a[8])}, n=${a[5]})` : format(a[8])) + (c.unit ? " " + c.unit : ""));
@@ -511,7 +516,7 @@
     draw() {
       if (!this.host.isConnected || !this.area.clientWidth || !this.area.getClientRects().length) return;
       const w = this.area.clientWidth, h = this.area.clientHeight, dpr = Math.min(3, window.devicePixelRatio || 1), g = this.view;
-      this.width = Math.max(1, w - 80); this.height = Math.max(1, h - this.top - 36); const T = this.top;
+      this.height = Math.max(1, h - this.top - 20); const T = this.top, B = h - 20;
       if (this.canvas.width !== Math.round(w * dpr) || this.canvas.height !== Math.round(h * dpr)) { this.canvas.width = Math.round(w * dpr); this.canvas.height = Math.round(h * dpr); }
       const ctx = this.canvas.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
       let low = Infinity, high = -Infinity, retained = 0;
@@ -532,12 +537,30 @@
       ctx.font = "10px arial, helvetica, sans-serif"; ctx.fillStyle = ctx.strokeStyle = ink; ctx.lineWidth = 1;
       ctx.textAlign = "right";
       const rule = (x0, y0, x1, y1, faint) => { ctx.globalAlpha = faint ? .12 : 1; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); ctx.globalAlpha = 1; };
-      for (const v of ticks(this.yMin, this.yMax, 5)) { const p = Math.round(y(v)) + .5; rule(64, p, w - 16, p, true); rule(60, p, 64, p); ctx.fillText(format(v), 56, p + 4); }
+      // Y tick labels read bottom to top, so the gutter needs only one line of text; it also fits the unit label
+      // drawn above the axis. Long labels get fewer ticks instead of overlapping.
+      const unit = this.sources[0].unit, labelled = count => ticks(this.yMin, this.yMax, count).map(v => [y(v), format(v)]);
+      let yTicks = labelled(5);
+      const longest = Math.max(0, ...yTicks.map(t => ctx.measureText(t[1]).width));
+      if (this.height / 5 < longest + 12) yTicks = labelled(Math.max(2, Math.floor(this.height / (longest + 12))));
+      const L = this.left = Math.ceil(Math.max(18, ctx.measureText(unit).width + 8));
+      this.width = Math.max(1, w - L - 16);
+      const band = L + 2 + "px"; if (this.tools.style.left !== band) this.tools.style.left = band;
       ctx.textAlign = "center";
-      for (const v of ticks(g.lo, g.hi, Math.max(2, this.width / 90))) { const p = Math.round(this.x(v)) + .5; rule(p, T, p, h - 36, true); rule(p, h - 36, p, h - 32); ctx.fillText(format(v), p, h - 20); }
-      rule(64.5, T, 64.5, h - 35.5); rule(64, h - 35.5, w - 16, h - 35.5);
-      ctx.fillText("Elapsed time (s)", 64 + this.width / 2, h - 4); ctx.textAlign = "left"; ctx.fillText(this.sources[0].unit, 4, T - 4);
-      ctx.save(); ctx.beginPath(); ctx.rect(64, T, this.width, this.height); ctx.clip();
+      for (const [at, label] of yTicks) {
+        const p = Math.round(at) + .5, half = ctx.measureText(label).width / 2;
+        rule(L, p, w - 16, p, true); rule(L - 4, p, L, p);
+        ctx.save(); ctx.translate(L - 6, Math.min(B - half, Math.max(T + half, p))); ctx.rotate(-Math.PI / 2); ctx.fillText(label, 0, 0); ctx.restore();
+      }
+      ctx.textAlign = "center";
+      const title = "Elapsed time (s)", end = w - 16, room = end - ctx.measureText(title).width - 8;
+      for (const v of ticks(g.lo, g.hi, Math.max(2, this.width / 90))) {
+        const p = Math.round(this.x(v)) + .5, label = format(v); rule(p, T, p, B, true); rule(p, B, p, B + 4);
+        if (p + ctx.measureText(label).width / 2 < room) ctx.fillText(label, p, h - 5);
+      }
+      rule(L + .5, T, L + .5, B + .5); rule(L, B + .5, end, B + .5);
+      ctx.textAlign = "right"; ctx.fillText(title, end, h - 5); ctx.textAlign = "left"; ctx.fillText(unit, 4, T - 4);
+      ctx.save(); ctx.beginPath(); ctx.rect(L, T, this.width, this.height); ctx.clip();
       for (const c of this.sources) {
         if (this.hidden.has(c)) continue;
         const color = palette[(c.id - 1) % palette.length]; ctx.strokeStyle = ctx.fillStyle = color; ctx.lineWidth = 1.3; ctx.beginPath();
@@ -563,42 +586,49 @@
       const d = this.drag, z = d && this.mode == "Zoom";
       ctx.strokeStyle = ctx.fillStyle = "#d0021b"; ctx.setLineDash([4, 3]);
       for (const marker of this.hooks.restarts()) if (marker.time >= g.lo && marker.time <= g.hi) {
-        const x = this.x(marker.time); ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, h - 36); ctx.stroke(); ctx.fillText("≈ restart", x + 4, T + 12);
+        const x = this.x(marker.time); ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, B); ctx.stroke(); ctx.fillText("≈ restart", x + 4, T + 12);
       }
       // Label each marker on the outer side of the measured interval.
       ctx.fillStyle = "#b07000"; ctx.font = "bold 11px arial, sans-serif";
       if (!z) for (const [name, t, other] of [["A", g.a, g.b], ["B", g.b, g.a]]) if (t !== null) {
-        const left = other !== null && t < other; ctx.textAlign = left ? "right" : "left"; ctx.fillText(name, this.x(t) + (left ? -3 : 3), h - 40);
+        const x = this.x(t), room = ctx.measureText(name).width + 3;
+        const left = other !== null && t < other ? x - room > L : x + room > w - 16;
+        ctx.textAlign = left ? "right" : "left"; ctx.fillText(name, x + (left ? -3 : 3), B - 4);
       }
       ctx.restore(); ctx.setLineDash([]);
-      if (!retained) { ctx.textAlign = "center"; ctx.fillStyle = ink; ctx.fillText("Waiting for valid data", 64 + this.width / 2, h / 2); }
+      if (!retained) { ctx.textAlign = "center"; ctx.fillStyle = ink; ctx.fillText("Waiting for valid data", L + this.width / 2, h / 2); }
       this.liveBox.checked = g.live;
       this.baseReadout = (g.live ? "Live" : "Inspecting") + ` · ${format(g.lo)}–${format(g.hi)} s · ${retained} samples` +
         (this.sources.some(c => c.history.compacted) ? " · older history summarized" : "") +
-        (this.sources.some(c => c.history.evicted) ? " · oldest coverage expired" : "") +
-        (g.a !== null && g.b === null ? " · A " + format(g.a) + " s" : "");
+        (this.sources.some(c => c.history.evicted) ? " · oldest coverage expired" : "");
       this.band(z ? d.t : g.a, z ? d.end : g.b, z);
       this.inspect();
-      const rows = [];
-      if (g.a !== null && g.b !== null) {
-        const lo = Math.min(g.a, g.b), hi = Math.max(g.a, g.b), dt = hi - lo;
-        rows.push(`A ${format(g.a)} s · B ${format(g.b)} s · Δt ${format(dt)} s · 1/Δt ${format(dt ? 1/dt : NaN)} Hz`);
-        for (const c of this.sources) {
-          if (this.hidden.has(c)) continue;
-          const a = c.history.range(lo, hi), left = c.history.nearest(lo), right = c.history.nearest(hi);
-          if (!a || !a[5]) continue;
-          const sd = a[9];
-          let text = `${c.label}: n ${a[5]} · min ${format(a[6])} · max ${format(a[7])} · p-p ${format(a[7]-a[6])} · mean ${format(a[8])} · RMS ${format(Math.hypot(a[8],sd))} · σ ${format(sd)} ${c.unit}`;
-          if (left && right && left.a[5] && right.a[5]) {
-            const dy = right.a[8]-left.a[8], seconds = right.a[0]-left.a[0];
-            text += ` · ${left.summary || right.summary ? "Δmean" : "Δy"} ${format(dy)}`;
-            if (!left.summary && !right.summary) text += " · slope " + format(seconds ? dy/seconds : NaN) + "/s";
-          }
-          if (a[0] < lo || a[1] > hi) text += ` · summary coverage ${format(a[0])}–${format(a[1])} s`;
-          rows.push(text);
+      // Measurements are an A/B line and a table with one row per series. The row count never changes,
+      // so measuring never shifts the page.
+      const both = g.a !== null && g.b !== null, lo = Math.min(g.a, g.b), hi = Math.max(g.a, g.b), dt = hi - lo;
+      const first = both ? `A ${format(g.a)} s · B ${format(g.b)} s · Δt ${format(dt)} s · 1/Δt ${format(dt ? 1/dt : NaN)} Hz` :
+        g.a !== null || g.b !== null ? `A ${format(g.a ?? NaN)} s · B ${format(g.b ?? NaN)} s` : "Shift-drag, or press A and B, to measure an interval";
+      const rows = this.sources.map(c => {
+        const a = both && c.history.range(lo, hi), row = [c.label + (c.unit ? " (" + c.unit + ")" : ""), both ? 0 : "—", "—", "—", "—", "—", "—", "—", "—", "—"];
+        if (!a || !a[5]) return row;
+        const sd = a[9], left = c.history.nearest(lo), right = c.history.nearest(hi);
+        row.splice(1, 7, a[5], format(a[6]), format(a[7]), format(a[7] - a[6]), format(a[8]), format(Math.hypot(a[8], sd)), format(sd));
+        if (left && right && left.a[5] && right.a[5]) {
+          const dy = right.a[8] - left.a[8], seconds = right.a[0] - left.a[0], summary = left.summary || right.summary;
+          row[8] = format(dy) + (summary ? " (means)" : "");
+          if (!summary) row[9] = format(seconds ? dy / seconds : NaN);
         }
+        if (a[0] < lo || a[1] > hi) row[0] += ` · summary ${format(a[0])}–${format(a[1])} s`;
+        return row;
+      });
+      const text = JSON.stringify([first, rows]);
+      if (text !== this.rows) {
+        this.rows = text;
+        const table = make("table", ""), head = make("tr", "", undefined, make("thead", "", undefined, table)), body = make("tbody", "", undefined, table);
+        for (const name of ["Series", "n", "min", "max", "p-p", "mean", "RMS", "σ", "Δy", "slope /s"]) make("th", "", name, head);
+        for (const [name, ...cells] of rows) { const tr = make("tr", "", undefined, body); make("th", "", name, tr); for (const cell of cells) make("td", "", String(cell), tr); }
+        this.measure.replaceChildren(make("p", "", first), table);
       }
-      if (rows.join("\n") !== this.rows) { this.rows = rows.join("\n"); this.measure.replaceChildren(...rows.map(text => make("p", "", text))); }
     }
     destroy() { this.abort.abort(); this.observer.disconnect(); this.element.remove(); }
   }

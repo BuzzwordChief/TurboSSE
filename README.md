@@ -1,12 +1,24 @@
-**TurboSSE**
+# TurboSSE
 
-A standalone JavaScript library for embedded-device debug pages. Bind SSE events to values, logs, and scientific time-series plots. Inspect synchronized plots, retain bounded statistical history, and download original events plus a separate CSV for each series. The sticky toolbar shows connection status and estimated device uptime. Everything runs on ordinary HTTP pages with no runtime dependencies.
+[![Build minified library](https://github.com/BuzzwordChief/TurboSSE/actions/workflows/build.yml/badge.svg)](https://github.com/BuzzwordChief/TurboSSE/actions/workflows/build.yml)
 
-Build the runtime into `dist/turbo-sse.min.js` and `dist/turbo-sse.css`, or download the GitHub Actions artifact. Copy both files onto your device. No Node.js, bundler, CDN, or Python is needed on the device. Readable sources are in `src/`; Python 3.9 is used for the example server, build tooling, and tests. Generated `dist/` files are ignored by Git.
+Debug pages for embedded devices, driven by Server-Sent Events. Bind events to values and logs with HTML attributes, plot numeric series on synchronized scientific graphs with A/B measurements, and download everything as one ZIP. It is one JavaScript file and one stylesheet, about 18 KiB gzipped together, with no runtime dependencies, so a device can serve it straight from firmware.
 
-The shipped JavaScript and CSS total **17,649 bytes gzip** (17.2 KiB). This exceeds the soft 8 KiB target; the complete graphing/inspection/export implementation, including the classless page styles, has an 18 KiB regression ceiling. Chromium, Firefox, and WebKit tests cover the runtime and downloads. See [VALIDATION.md](VALIDATION.md) for numerical simulations, live-run results, tested hashes, and their scope.
+![The demo page: connection bar, a table of real-time values, and three synchronized plots with an A/B measurement](docs/screenshot.png)
 
-**Run the example**
+## Features
+
+- **Attribute bindings.** `data-sse-event`, JSON Pointer selection and your own transform functions update text, trusted HTML or append-only logs. The page needs no framework or build step.
+- **Scientific plots.** Canvas time series with synchronized windows and cursors, pan, zoom, range zoom and live follow. A/B measurements give count, extrema, peak-to-peak, mean, RMS, standard deviation, Δy and slope.
+- **Bounded history.** Plots keep exact samples while their memory budget allows, then summarize older data without losing counts, extrema, means or deviations.
+- **One-click exports.** Every export downloads one ZIP with the original events, one CSV per series and an `export.txt` describing the snapshot.
+- **Connection awareness.** A sticky topbar shows connection state, estimated device uptime and capture counters. Plots mark estimated device restarts, and stalled streams reconnect with a resume cursor.
+- **Classless styling.** The stylesheet also styles plain HTML such as tables, details, headings and columns, so a device page needs no classes or CSS of its own.
+- **Firmware friendly.** The build emits C headers containing the minified script, plain or gzip-compressed.
+
+## Quick start
+
+### Run the demo
 
 ```sh
 python3.9 -m venv .venv39
@@ -15,18 +27,22 @@ python3.9 -m venv .venv39
 .venv39/bin/python examples/server.py
 ```
 
-Open `http://127.0.0.1:8000`. The server uses only Python's standard library and serves the generated distribution files. Build once after cloning and again after changing the library sources. To simulate a broken connection or a silent device:
+Open <http://127.0.0.1:8000>. The demo server uses only the Python standard library and serves the built files from `dist/`; build again after changing `src/`. The demo page, [examples/index.html](examples/index.html), has no classes and no stylesheet of its own.
+
+Simulate faults and load:
 
 ```sh
-python3.9 examples/server.py --disconnect-every 10
-python3.9 examples/server.py --stall-after 5
-python3.9 examples/server.py --restart-every 20
-python3.9 examples/server.py --rate 100
+.venv39/bin/python examples/server.py --disconnect-every 10   # drop the connection; device uptime continues
+.venv39/bin/python examples/server.py --stall-after 5         # stop sending; the 30 s watchdog reconnects
+.venv39/bin/python examples/server.py --restart-every 20      # restart the simulated device and its uptime
+.venv39/bin/python examples/server.py --rate 100              # sample groups per second, 0.1 to 1000
 ```
 
-The demo is a two-column page styled only by `turbo-sse.css`: overlaid inlet/outlet temperatures above a table of real-time values, and synchronized motor-speed/voltage panels beside them. Its 1 MiB graph budget makes compaction easy to exercise at higher sample rates. Uptime belongs to the simulated device, not the connection; `--disconnect-every` preserves it, while `--restart-every` resets it. The silence timeout is 30 seconds. The server sends a fresh snapshot on each connection; it does not replay missed history. Press Ctrl+C to stop it. `--host`, `--port`, and `--rate` configure the listener and sample frequency; the default listener is localhost only.
+`--host` and `--port` set the listener, localhost port 8000 by default. The server sends a fresh snapshot on each connection and does not replay missed history. The demo's 1 MiB graph budget makes history compaction easy to see at higher rates. Press Ctrl+C to stop it.
 
-**Use in a page**
+### Add it to a device page
+
+Copy `dist/turbo-sse.min.js` and `dist/turbo-sse.css` onto the device, or take them from a [release or CI artifact](#continuous-integration-and-releases). No Node.js, bundler, CDN or Python is needed on the device.
 
 ```html
 <head>
@@ -52,7 +68,7 @@ The demo is a two-column page styled only by `turbo-sse.css`: overlaid inlet/out
 </body>
 ```
 
-`debug-transforms.js` belongs to your application:
+Transform functions such as the one in `debug-transforms.js` belong to your application:
 
 ```javascript
 window.celsius_to_degree = function (value) {
@@ -61,7 +77,7 @@ window.celsius_to_degree = function (value) {
 };
 ```
 
-Serve an SSE response containing:
+The device serves an event stream such as:
 
 ```text
 retry: 2000
@@ -84,20 +100,20 @@ data: alive
 
 ```
 
-Each event ends with a blank line. The empty second `data:` line in the log event preserves a trailing newline in its payload. The temperature displays `23.6 °C`, the RPM displays `1450`, and the log appends `Motor started\n`.
+The temperature shows `23.6 °C`, the RPM shows `1450`, and the log appends `Motor started\n`. Each event ends with a blank line; the empty second `data:` line preserves the log entry's trailing newline.
 
-Serve UTF-8 with `Content-Type: text/event-stream` and `Cache-Control: no-cache`. Flush complete events and disable any proxy buffering. The demo's `encode_event()` function handles strings, multiline data, Unicode, and empty IDs; explicitly use `json.dumps()` for JSON events. Keep firmware messages small (16 KiB or less is recommended).
+Serve UTF-8 with `Content-Type: text/event-stream` and `Cache-Control: no-cache`, flush complete events, and disable any proxy buffering. Keep messages small; 16 KiB or less is recommended. The demo server's `encode_event()` handles strings, multiline data, Unicode and empty IDs; encode JSON payloads explicitly with `json.dumps()`.
 
-**Graph values with HTML**
+## Plots
 
-Add `data-sse-graph` to a numeric binding. The existing event/JSON selection syntax works unchanged:
+Add `data-sse-graph` to a numeric binding. The event and JSON selection attributes work unchanged:
 
 ```html
 <div data-sse-event="temperature"
      data-sse-graph data-sse-label="Temperature" data-sse-unit="°C"></div>
 ```
 
-A container without its own event binding can overlay several series. Matching sync names link the time window, cursor and A/B selection across panels:
+A graph element without its own event binding overlays the series inside it. Graphs with the same `data-sse-sync` name share their time window, cursor and A/B markers:
 
 ```html
 <div data-sse-graph data-sse-title="Thermal response" data-sse-sync="motor" data-sse-window="60">
@@ -111,74 +127,105 @@ A container without its own event binding can overlay several series. Matching s
      data-sse-label="Motor speed" data-sse-unit="rpm"></div>
 ```
 
-Keep one unit per panel; use stacked panels for different quantities. The first panel in a sync group sets its Live window. Graphs fill their container; the plot area is 220 px tall; set `--turbo-sse-height` in CSS to change it. `data-sse-y-min` and `data-sse-y-max` optionally fix the y range. Each graph generates a header showing its title and the units of its series. The title is `data-sse-title`, else the graph's own `data-sse-label`, else the series labels. Graphs own generated header/controls/canvas/legend DOM and temporarily hide their source spans; destruction restores those spans. The source elements themselves remain intact.
+- Keep one unit per graph, and stack graphs for different quantities. The first graph in a sync group sets the group's Live window.
+- Graphs fill their container. The plot area is 220 px tall; set `--turbo-sse-height` in CSS to change it. `data-sse-y-min` and `data-sse-y-max` fix the y range.
+- Each graph generates a header with its title and the units of its series. The title is `data-sse-title`, else the graph's own `data-sse-label`, else the series labels.
+- Graphs own the header, controls, canvas and legend they generate. They hide their source elements while they exist and show them again when destroyed.
 
-Hovering shows a crosshair; the readout row lists the elapsed time, the y value under the pointer, and the nearest sample. Legend entries toggle a series (Shift-click isolates one); a hidden series keeps an outlined swatch so it is still listed.
+### Controls
 
-- A plot is inactive until you click it or move keyboard focus into it. Hovering an inactive plot shows "Click to interact", and the wheel scrolls the page as usual. The first click only activates the plot; clicking elsewhere or tabbing away deactivates it. Clicking a toolbar control keeps the plot active and returns keyboard focus to the plot, so its shortcuts keep working; a control activated from the keyboard keeps focus. On touch screens an inactive plot lets the page scroll, and the first tap activates it.
-- Drag to pan and use the wheel to zoom around the pointer. While **Live** is checked, the wheel only changes the followed window, so zooming in or out keeps tracking incoming data; panning or selecting a range unchecks Live. Checking Live again keeps the current span and moves it to the newest data. **Fit** is a one-time action: it shows all retained history and restores automatic y scaling. It leaves Live as it is; while Live is checked, the followed window then covers all history as data arrives. Right-drag selects a time range to zoom into, shown as a gray band with dashed edges; Shift with right-drag also zooms y.
-- Shift-drag measures an interval, shown as an amber band between solid A and B lines. Measuring and placing a marker both uncheck Live so the markers stay in view. The markers are labelled A and B on the outer side of the measured interval, and the first measurement row lists each marker's own time. On touch screens, drag pans and two taps set A/B. Keyboard `A` and `B` set them at the cursor, or the view center; Escape clears/cancels. Readouts include delta time/value, slope, count, extrema, peak-to-peak, mean, RMS and population standard deviation.
-- Left/right arrows pan, `+`/`-` zoom, `L` toggles Live, and `F` fits retained history. Shortcuts work while the plot is active, wherever focus is inside it; key combinations with Ctrl, Cmd or Alt are left to the browser. While the plot is active, the Live checkbox and the Fit, Back and Export view buttons appear in its header, and a key legend for the pointer and keyboard controls appears in a band above the data; Live and Fit show their `L` and `F` keys. The band is reserved, so the legend never covers data. Touch screens show no key legend.
-- Click a legend entry, or press Enter or Space on it, to hide/show it; Shift-click isolates it. Legend, readout and measurement text can be selected and copied; selecting legend text does not toggle the series. Acquisition continues for hidden series. **Back** restores an earlier time window.
-- **Export view** downloads a ZIP with the selected plot's series for the visible or A/B interval. The topbar's **Export All** downloads a ZIP with all retained data.
+A plot is inactive until you click it or move keyboard focus into it. Hovering an inactive plot shows "Click to interact", and the wheel scrolls the page as usual. The first click only activates the plot; clicking elsewhere or tabbing away deactivates it.
 
-Raw numeric strings and selected JSON numbers are accepted. Null/missing/invalid data creates a visible gap; invalid numbers increment Graph errors. Returning `undefined` from a graph transform skips that update. Graph transforms must return a numeric value (or null/undefined), be synchronous, and be pure. Identical event/selector/transform/unit sources share history and evaluate their transform once per event, even across several plots. Ordinary text transforms retain their per-binding behavior. Use a numeric unit conversion for a graph; a display transform returning `"23.6 °C"` is not a graph value.
+| Action | Pointer | Keyboard |
+| --- | --- | --- |
+| Pan | Drag | <kbd>←</kbd> <kbd>→</kbd> |
+| Zoom around the pointer | Wheel | <kbd>+</kbd> <kbd>−</kbd> |
+| Zoom to a time range | Right-drag; with Shift, also zooms y | |
+| Measure an interval | Shift-drag | <kbd>A</kbd> and <kbd>B</kbd> at the cursor, or the view center |
+| Clear markers, cancel a drag | | <kbd>Esc</kbd> |
+| Follow new data | **Live** checkbox | <kbd>L</kbd> |
+| Show all history with automatic y | **Fit** | <kbd>F</kbd> |
+| Return to the previous view | **Back** | |
+| Hide or isolate a series | Click or Shift-click its legend entry | <kbd>Enter</kbd> or <kbd>Space</kbd> on the entry |
+| Download the plot's data | **Export view** | |
 
-**Attributes**
+On touch screens an inactive plot lets the page scroll, the first tap activates it, drag pans, and two taps set A and B.
+
+- **The control band.** While a plot is active, a one-row band above the data shows Live, Fit, Back and Export view on the right, and a key legend on the left. A legend that does not fit shows as much as it can and fades out; hovering it shows the full legend over the top of the plot. The band is reserved, so it never covers data. Touch screens show no key legend.
+- **Live and Fit.** While Live is checked, the wheel only changes the followed window, so zooming keeps tracking new data. Panning or range zoom unchecks Live, and checking it again keeps the current span. Fit is a one-time action that leaves Live as it is; while Live is checked, the followed window then covers all history as data arrives.
+- **Focus.** Shortcuts work while a plot is active, wherever focus is inside it; combinations with Ctrl, Cmd or Alt are left to the browser. Clicking a toolbar control keeps the plot active and returns focus to it, while a control activated from the keyboard keeps focus.
+- **Reading values.** Hovering shows a crosshair; the readout row gives the elapsed time, the y value under the pointer, the nearest sample and its estimated uptime. Y tick labels read bottom to top, so the y axis needs only one line of text; long labels get fewer ticks.
+- **Legend.** A hidden series keeps an outlined swatch and keeps recording. Legend, readout and measurement text can be selected and copied; selecting legend text does not toggle the series.
+
+### Measurements
+
+Measuring or placing a marker unchecks Live so the markers stay in view. The markers are labelled A and B on the outer side of the interval, as an amber band; a range zoom in progress shows as a gray band with dashed edges.
+
+Below the readout, an A/B line gives both marker times, Δt and 1/Δt. A table gives each series' count, minimum, maximum, peak-to-peak, mean, RMS, population standard deviation, Δy and slope. The line and one row per series are always present, so measuring never moves the page; the table scrolls sideways on plots too narrow for it.
+
+### Graph values
+
+Graphs accept numeric strings and selected JSON numbers. Null, missing or invalid data leaves a visible gap, and invalid numbers increment the Graph errors counter. A graph transform must be synchronous and pure and return a number, `null` or `undefined`; `undefined` skips the update. Use a numeric conversion for graphs: a display transform that returns `"23.6 °C"` is not a graph value.
+
+Bindings with the same event, selector, transform and unit share one history and evaluate their transform once per event, even across several graphs. Text bindings keep their own transform calls.
+
+## Attributes
 
 | Attribute | Behavior | Default |
 | --- | --- | --- |
-| `data-sse-connect` | SSE URL on a single connection root | Required |
+| `data-sse-connect` | SSE URL on the single connection root | Required |
 | `data-sse-events` | Additional event names to capture, separated by whitespace | None |
 | `data-sse-timeout` | Silence timeout in milliseconds | `0`, disabled |
-| `data-sse-buffer-events` | Maximum retained CSV records | `10000` |
-| `data-sse-buffer-bytes` | Capture string-storage budget | `2097152` |
-| `data-sse-omit-raw` | Root list of event names to omit only from raw capture | Empty: omit nothing |
-| `data-sse-uptime-event` | Root event name carrying a plain uptime float in seconds | `uptime` |
-| `data-sse-graph-bytes` | Root accounted graph-history/index budget; minimum 8192 | `33554432` (32 MiB) |
-| `data-sse-graph` | Enable a numeric plot or group child series | Absent |
-| `data-sse-sync` | Shared time-navigation/cursor group | Independent |
-| `data-sse-title` | Graph header title | The graph's `data-sse-label`, else its series labels |
+| `data-sse-buffer-events` | Maximum retained raw events | `10000` |
+| `data-sse-buffer-bytes` | Raw capture string-storage budget | `2097152` |
+| `data-sse-omit-raw` | Event names to leave out of raw capture only | Empty: omit nothing |
+| `data-sse-uptime-event` | Event carrying the device uptime in seconds | `uptime` |
+| `data-sse-graph-bytes` | Graph history budget; minimum 8192 | `33554432` (32 MiB) |
+| `data-sse-graph` | Plot a binding, or overlay the series inside the element | Absent |
+| `data-sse-sync` | Group sharing time window, cursor and markers | Independent |
+| `data-sse-title` | Graph header title | The graph's label, else its series labels |
 | `data-sse-label`, `data-sse-unit` | Series name and unit | Event name; no unit |
-| `data-sse-window` | Initial/Live visible seconds; positive finite number | `60` |
-| `data-sse-y-min`, `data-sse-y-max` | Optional finite y bounds, min below max | Automatic |
-| `data-sse-event` | Event name for a bound element; `message` for unnamed events | Required |
+| `data-sse-window` | Initial and Live visible seconds; positive finite number | `60` |
+| `data-sse-y-min`, `data-sse-y-max` | Fixed y bounds; min below max | Automatic |
+| `data-sse-event` | Event name for a binding; `message` for unnamed events | Required |
 | `data-sse-json` | JSON Pointer selecting a value; `""` selects the whole document | Absent: raw string |
 | `data-sse-transform` | Name of your global transform function | None |
 | `data-sse-swap` | `replace` contents or `append` entries | `replace` |
 | `data-sse-format` | `text` or trusted `html` | `text` |
 | `data-sse-limit` | Maximum retained entries in an append target | `500` |
 
-Only one connection root is supported per page. Bindings must be descendants of the root and must not contain other bindings. Numeric limits must be positive safe integers; the timeout also accepts zero. Root connection/capture/history/uptime options are read at initialization; changing them requires `destroy()` and `init()`.
+- One connection root per page. Bindings must be descendants of the root and must not contain other bindings.
+- Numeric limits must be positive safe integers; the timeout also accepts zero. Root options are read at initialization; changing them requires `destroy()` and `init()`.
+- Events named in bindings are subscribed automatically. List every other event in `data-sse-events` if it should appear in the raw export; `EventSource` has no wildcard subscription, so unknown names cannot be observed. `message`, `heartbeat` and the uptime event are always subscribed. Reserve `open` and `error` for the connection lifecycle.
 
-Events mentioned in bindings are subscribed automatically. Declare every other event name in `data-sse-events` if it must appear in CSV. Native `EventSource` has no wildcard subscription, so unknown names cannot be observed or counted. `message`, `heartbeat`, and the configured uptime event are always subscribed. Their raw capture can be explicitly omitted. Reserve `open` and `error` for the connection lifecycle.
+## Values, logs and transforms
 
-Text bindings render strings literally, including leading zeros, JSON-looking text, and HTML characters. Replacement preserves the bound element. Append inserts one entry per event without adding separators or reparsing previous entries. Append targets are owned by the library and start empty on initialization; a refresh that changes their binding configuration resets their history.
+Text bindings render strings literally, including leading zeros, JSON-looking text and HTML characters. Replacement keeps the bound element. Append adds one entry per event without separators and never reparses earlier entries. Append targets are owned by the library, start empty, and reset when a refresh changes their configuration.
 
-HTML insertion must be explicitly enabled with `data-sse-format="html"` and is intended for trusted device-generated markup. It does not sanitize content. A fragment with several nodes still counts as one append entry. The library does not scan inserted HTML for new bindings automatically.
+`data-sse-format="html"` inserts trusted device-generated markup without sanitizing it. A fragment of several nodes counts as one append entry, and inserted HTML is not scanned for new bindings.
 
-**JSON and transforms**
+JSON is parsed only for bindings with `data-sse-json`, at most once per message. JSON Pointer reaches nested objects and arrays, such as `/sensors/0/value`; write `~1` for `/` and `~0` for `~` in keys. A missing path leaves the binding unchanged. Malformed JSON skips JSON bindings and counts a JSON error, while raw bindings and capture continue.
 
-JSON parsing happens only when a binding uses `data-sse-json`, at most once per message. JSON Pointer supports nested objects and arrays, such as `/sensors/0/value`; use `~1` for `/` and `~0` for `~` in keys. Missing paths leave that binding unchanged. Malformed JSON skips JSON bindings and increments the JSON-error count while raw bindings and CSV capture continue.
+Values flow from the raw string or selected JSON value, through an optional transform and text conversion, to the DOM. With `{"temperature":23.6}` and `data-sse-json="/temperature"`, the transform receives the number `23.6`; without `data-sse-json` it receives the original string. Transforms work with appending too.
 
-The pipeline is **raw string or selected JSON value → optional transform → text conversion → DOM update**. For example:
+- Define transforms on `window` before the library initializes. Module scripts can assign to `window` and then call `TurboSSE.refresh()`.
+- Names are resolved and cached at initialization and refresh. Attributes take simple names only, with no expressions, calls or dotted paths.
+- Transforms run synchronously, once per matching binding per message, before rendering is batched. Keep them fast, and treat shared JSON input as read-only.
+- Strings render as returned, numbers and booleans become text, objects and arrays become compact JSON, and `null` becomes an empty string. `undefined` skips the update.
+- A missing function disables its bindings until a successful refresh. Exceptions, asynchronous results and unsupported return types skip only that update and show in the topbar counters.
+- Output is literal text unless HTML mode is enabled. The raw export keeps the original payload, even when a transform fails.
 
-```html
-<span data-sse-event="telemetry"
-      data-sse-json="/temperature"
-      data-sse-transform="celsius_to_degree">—</span>
-```
+## Connection, uptime and restarts
 
-With `{"temperature":23.6}`, your function receives the number `23.6`. Without `data-sse-json`, it receives the original string. The same transform works with `data-sse-swap="append"`.
+The topbar shows the connection state: Connecting and Reconnecting in amber, Connected in green, Stalled and Disconnected in red. Screen readers announce state changes, and counters update at most once a second. Export progress and errors appear next to **Export All**.
 
-- Define your function as a property of `window` before the library initializes. Module scripts can assign to `window` and then call `TurboSSE.refresh()` after registration.
-- Function names are resolved and cached at initialization/refresh. Attributes accept simple names such as `celsius_to_degree`, with no expressions, function calls, or dotted paths.
-- Functions are synchronous and run once per matching binding per received message, before rendering is batched. Keep them fast. Treat shared JSON inputs as read-only and return a derived value.
-- Strings are rendered as returned; numbers and booleans become text; objects/arrays become compact JSON; `null` becomes an empty string. Returning `undefined` skips the update.
-- Missing functions disable their bindings until a successful refresh. Exceptions, asynchronous results, and unsupported return types skip only the affected update. Counters in the topbar expose errors.
-- Transform output uses literal text unless HTML mode is explicitly enabled. Raw CSV retains the original payload, including when a transform fails, unless that event was explicitly omitted or evicted.
+Transient failures use the browser's `EventSource` reconnect and the server's `retry:` interval. A terminal closure, including HTTP 204, shows Disconnected and a **Retry** button; the browser does not reveal the HTTP status.
 
-**Uptime and estimated restarts**
+With `data-sse-timeout` set, send a named heartbeat event at least three times per timeout, for example every 10 seconds for a 30-second timeout. Any captured message counts as activity; SSE comments do not. A silent open stream is closed and reopened after two seconds. The watchdog pauses during the browser's own reconnect attempts.
+
+Native reconnects send `Last-Event-ID`. Watchdog and manual reconnects pass the last ID as a URL-encoded `lastEventId` query parameter. Firmware should prefer the header, then the query parameter. Use IDs with a boot or session prefix, and replay from a small device-side buffer if you have one, or else send a fresh snapshot. TurboSSE does not deduplicate events or recover history the device cannot replay.
+
+### Uptime
 
 ```html
 <body data-sse-connect="/events" data-sse-uptime-event="uptime">
@@ -190,95 +237,112 @@ data: 1234.567
 
 ```
 
-The data is a finite, nonnegative decimal float in seconds. No JSON clock payload, boot ID or per-measurement device timestamp is needed. One report establishes an estimate; periodic reports correct it. Send at least one on each connection if reconnect synchronization matters. Empty, malformed, negative or nonfinite reports leave the previous anchor intact and increment Clock errors.
+The payload is a finite, non-negative number of seconds; no JSON, boot ID or per-sample timestamp is needed. One report starts the estimate and periodic reports correct it; send one on each connection if reconnect synchronization matters. Invalid reports keep the previous estimate and count a Clock error.
 
-The toolbar displays `Uptime ≈HH:MM:SS` using the report plus elapsed browser monotonic time, updated once a second. It displays unknown/unsynchronized time before the first report and after a disconnect until a fresh report arrives. Samples keep their timing estimate from reception; later reports do not silently retimestamp historical values.
+The topbar shows `Uptime ≈HH:MM:SS`, advancing once a second from the last report. It shows unknown time before the first report and after a disconnect until a new report arrives. Samples keep the uptime estimated when they arrived.
 
-After reconnect, only the first valid report is compared with the last **reported** uptime. A lower value adds an estimated restart marker and starts a local segment; previous graph history stays available. Equal/higher values and ordinary periodic updates do not add markers. Marker time is estimated from report arrival minus reported uptime. Network buffering, clock drift and browser suspension affect this estimate; restarts can be missed when the new uptime already exceeds the last value seen. The local segment is bookkeeping, not a device identifier.
+### Restarts
 
-**Connection status and history**
+After a reconnect, the first valid uptime report is compared with the last reported one. A lower value adds an estimated restart marker and starts a new local segment, which is bookkeeping rather than a device identifier; earlier history stays available. Periodic reports never add markers. The marker's time is the report's arrival minus its uptime, so network buffering, clock drift and browser suspension affect it, and a restart is missed if the new uptime already exceeds the last one seen.
 
-The topbar displays text and a colored marker: Connecting/Reconnecting in amber, Connected in green, and Stalled/Disconnected in red. Its status region announces state changes, while counters update at most once per second. Export All and Retry are keyboard-accessible buttons. Export progress and export errors appear next to Export All in a second status region.
+## Exports
 
-**Styling**
+Every export downloads one ZIP named `sse-<timestamp>.zip`, even when it holds a single CSV:
 
-`turbo-sse.css` follows the look of the HAProxy status page: 12 px Arial, black on white, 1 px gray rules, navy header bars, beige bands, tinted connection states (green, amber, red), and a yellow key legend. Numbers use tabular figures.
+- **Export All** in the topbar includes `raw-events.csv` and one CSV per unique series. Pages without graphs get just the raw file.
+- **Export view** includes one plot's series for its visible or A/B interval.
 
-It is also a small classless stylesheet for the page around the plots, so a device page needs no classes and no stylesheet of its own; the example uses none. It styles plain elements:
+Every ZIP starts with `export.txt`, which records when the snapshot was taken, whether it covers all retained data or a plot interval, and each file's coverage and size. Several plots of the same source produce one series file. The ZIP is stored uncompressed, so it is assembled from the prepared files without copying them; compress it afterwards if size matters.
 
-- `body` and `main` set the font, colors and a centered page up to 1400 px wide.
-- Each `<section>` directly inside `<main>` becomes a column; columns sit side by side when there is room for at least 480 px each and stack otherwise. Everything else in `<main>` spans the full width.
-- A `<header>` directly inside `<main>` lays out the `<h1>` title and a `<p>` tagline on one ruled line. `<h2>` is the navy italic subtitle style.
-- `<h3>` and table `<caption>` are navy bands, like the plot headers, so a captioned table reads as a panel.
-- Tables collapse their borders, `thead` cells get the beige band, and cells use tabular figures.
-- `<details>` is set off by a rule with a bold `<summary>`; `<section>` blocks inside it get a gray border. `<pre>` wraps long lines and scrolls beyond 240 px.
-- `<footer>`, links, `<kbd>`, buttons, disabled buttons and keyboard focus rings get matching styles; `[hidden]` always hides.
+Preparing an export freezes a bounded snapshot, yields between batches, and keeps acquisition running. One export is prepared at a time, within a temporary budget of 8 to 256 MiB derived from the capture and history budgets. An export that would exceed it fails with a message before anything downloads; use Export view for a smaller range. Prepared data is released 60 seconds after the download starts, when another export starts, or when the runtime is destroyed.
 
-These are element selectors, so any application rule for the same element overrides them. The canvas takes its axis, tick, and grid color from the computed `color` of `.turbo-sse-area`, so restyling the plot does not require editing the script. Series colors come from a fixed six-color palette in the script and are exposed to the legend as `--series-color`.
+### Raw events
 
-Normal transient failures use the existing native `EventSource` reconnect behavior and the server's `retry:` interval. Terminal closure, including HTTP 204, shows Disconnected and a manual Retry button; the browser does not expose the specific HTTP status to the library.
+`raw-events.csv` and `TurboSSE.exportCSV()` use the columns `received_at,elapsed_ms,event,last_event_id,data`. `received_at` is browser wall-clock time, `elapsed_ms` is monotonic time since initialization, and `last_event_id` is the browser's resume cursor, which may be inherited from an earlier event. `data` is the original payload with only CSV escaping; SSE comments and framing are not captured.
 
-When `data-sse-timeout` is enabled, send a named application heartbeat at least three times as often as the timeout (e.g. every 10 seconds for a 30-second timeout). Any captured message resets liveness. SSE comments do not count. An open stream that remains silent is closed and recreated after two seconds. The watchdog is inactive during the browser's native reconnect attempts.
-
-Native reconnect sends `Last-Event-ID`. Watchdog/manual replacement passes the last received ID in a URL-encoded `lastEventId` query parameter. Firmware should prefer the header when present, then the query parameter. Use IDs containing a boot/session prefix. Replay from a small device-side buffer if available; otherwise send a fresh snapshot. TurboSSE does not deduplicate events or recover history the device cannot replay.
-
-**CSV exports and raw omission**
-
-Every export button uses the same path: it freezes one snapshot and downloads it directly as one ZIP named `sse-<timestamp>.zip`, even when it holds a single CSV. **Export All** includes `raw-events.csv` and one CSV per unique series; pages without graphs get just the raw file. **Export view** includes the series of one plot for its visible or A/B interval. Multiple plot views of the same source produce one series file. Every ZIP starts with `export.txt`, which records when the snapshot was taken, whether it covers all retained data or a plot interval, and each file with its coverage and size. The ZIP is stored without compression, so it is built from the prepared files without copying them and needs no extra library; compress it afterwards if size matters. There is no browser disk-streaming API.
-
-**Raw events are captured by default even when graphed.** To save raw-buffer space explicitly:
+Raw events are captured by default, even when graphed. To save capture space, omit whole events by name:
 
 ```html
 <body data-sse-connect="/events"
       data-sse-omit-raw="temperature telemetry">
 ```
 
-The list is whitespace-separated and matches whole event names. Empty/absent means omit nothing. It does not subscribe to new names or suppress graphs, text/log bindings, uptime, liveness or resume cursors. Omission removes the entire original payload, including unplotted JSON fields, and still applies if parsing/transformation fails. Intentional omissions have their own counter. Configure it before initialization.
+Omission drops the entire original payload, including unplotted JSON fields, and does not affect subscriptions, graphs, text and log bindings, uptime, liveness or resume cursors. Omissions have their own counter.
 
-The raw file and `TurboSSE.exportCSV()` retain the existing five-column schema. Series files instead contain the stored numeric values actually plotted, after numeric transforms and before display rounding. They export retained samples/summaries, never the reduced set of drawing points. Each file is self-contained:
+### Series files
 
-| Fields | Meaning |
+Series files contain the numeric values actually plotted, after numeric transforms and before display rounding. They hold the retained samples and summaries, never the reduced set of drawing points. Each file is self-contained:
+
+| Columns | Meaning |
 | --- | --- |
-| `series,event,json_pointer,transform,unit` | Series/source metadata; blank selector can mean a raw source or whole-document JSON selection. |
-| `kind` | `sample`, `summary`, `gap`, or estimated `restart`. |
-| `elapsed_start_s,elapsed_end_s` | Point or covered interval in browser elapsed seconds. |
-| `uptime_start_s,uptime_end_s,segment` | Estimated device time and local segment; unknown uptime is empty. |
-| `value,count` | Exact retained sample value and count; summary `value` is empty. |
-| `min,max,mean,stddev,first,last,min_elapsed_s,max_elapsed_s` | Summary statistics and extrema times; `stddev` is population deviation. These columns are empty for ordinary samples. |
-| `gaps` | Number of represented gaps/invalid samples. |
-| `detected_elapsed_s` | When a restart was inferred, separate from its estimated position. |
+| `series,event,json_pointer,transform,unit` | Series and source metadata. An empty selector means a raw source or whole-document JSON. |
+| `kind` | `sample`, `summary`, `gap` or estimated `restart` |
+| `elapsed_start_s,elapsed_end_s` | Point or covered interval in browser elapsed seconds |
+| `uptime_start_s,uptime_end_s,segment` | Estimated device time and local segment; empty when unknown |
+| `value,count` | Exact sample value and count; empty `value` for summaries |
+| `min,max,mean,stddev,first,last,min_elapsed_s,max_elapsed_s` | Summary statistics and the times of the extrema; `stddev` is the population deviation. Empty for samples. |
+| `gaps` | Number of gaps or invalid samples represented |
+| `detected_elapsed_s` | When a restart was inferred, separate from its estimated position |
 
-A summary describes multiple samples over an interval. Its mean is never exported as a pretend original point. Requested intervals intersecting a summary include that entire bucket and report the effective coverage. Gap and restart rows carry no measurement value. Original payloads, unselected JSON fields and compacted individual samples cannot be reconstructed from these numeric CSVs; retain raw capture or use an external raw-stream recorder when those are needed.
+A summary describes several samples over an interval, and its mean is never exported as a pretend sample. An interval that intersects a summary includes the whole summary and reports the actual coverage. Gap and restart rows carry no value. Original payloads, unselected JSON fields and compacted samples cannot be rebuilt from series files; keep raw capture or record the stream externally when you need them.
 
-Export preparation freezes a bounded copy, yields between batches and leaves acquisition running. Only one export is prepared at a time. Its temporary budget is computed from configured capture/history budgets, between 8 and 256 MiB; it includes snapshot accounting, encoded output and a transient Blob-copy allowance. A too-large export fails with a message next to Export All before anything is downloaded: use Export view for a smaller range. Prepared data is released 60 seconds after the download starts, when another export starts, or when the runtime is destroyed. Browser-native allocation/GC timing is not an exact process-memory guarantee.
+## Memory bounds
 
-**CSV and memory bounds**
+- **Raw capture** is a ring buffer limited by event count and string storage. The byte budget charges two bytes per UTF-16 code unit of payloads, names and IDs. The oldest events are evicted whole; an event larger than the whole budget is dropped, counted as Oversized, and still rendered.
+- **Append targets** each have a 256 KiB budget for transformed output, shared by pending and displayed entries. Old entries are discarded and counted as Append drops. Replacement targets keep only the newest pending value per animation frame.
+- **Graph history** uses indexed Float64 chunks and statistical summaries, exact while the shared budget allows; a busy series can use idle series' space. Under pressure, the oldest raw blocks become summaries that keep count, extrema and their times, first and last values, mean, deviation and gaps, and older summaries merge progressively. Retention does not depend on a fixed age or the visible window. Different restart segments are never merged into one summary. If even summaries run out of space, the oldest coverage expires and is counted.
+- `data-sse-graph-bytes` covers typed storage plus node and bookkeeping allowances; each distinct source needs at least 4 KiB, and restart markers have a small separate reserve. Canvas and other browser memory come on top. These are limits on managed storage, not exact heap measurements.
 
-CSV contains `received_at,elapsed_ms,event,last_event_id,data`. The timestamp is browser wall-clock time and elapsed time is monotonic since initialization. `last_event_id` is the browser's resume cursor and may be inherited from a previous event. Payloads are the original `MessageEvent.data` strings, with only CSV escaping applied. SSE comments and wire framing are outside the capture scope. Export downloads a snapshot and keeps reception running.
+## Styling
 
-Capture uses a ring buffer limited by event count and string storage. The byte budget charges two bytes per UTF-16 code unit for payloads, names, and IDs; it is not an exact JavaScript heap measurement. Old records are evicted whole. Records larger than the entire budget are dropped whole, counted as Oversized, and still eligible for rendering.
+`turbo-sse.css` follows the look of the HAProxy status page: 12 px Arial, black on white, 1 px gray rules, navy header bars, beige bands, tinted connection states and a yellow key legend, with tabular figures for numbers.
 
-Each append binding also has a fixed 256 KiB string budget, applied to transformed output. Pending and displayed entries share the same limits. Old entries are discarded and reported as Append drops; a single oversized entry is skipped. Replacement targets keep only the newest pending value per animation frame. This bounds queues when rendering is suspended, while CSV capture retains intermediate messages within its own limits. Memory used inside user transforms is under application control.
+It is also a small classless stylesheet for the page around the plots:
 
-Graph history uses indexed Float64 chunks and statistical summaries. It stays exact while the shared history budget permits; a busy series can use idle series' space. Under pressure, oldest raw blocks lose individual samples while retaining count, extrema and their times, first/last values, mean, population deviation and gaps. Older summaries merge progressively. Means are count-weighted; deviation is merged without squaring large/tiny values. There is no fixed age at which raw detail expires, and changing the visible window does not change retention.
+- `body` and `main` set the font, colors and a centered page up to 1920 px wide. Set `--turbo-sse-page-width` to change the width; the topbar keeps its full-width background and lines its content up with the page.
+- Each `<section>` directly inside `<main>` becomes a column. Neighbouring columns share a row when each can be at least 480 px wide, grow to fill it, and stack otherwise. Everything else in `<main>` takes a full-width row.
+- A `<header>` directly inside `<main>` sets the `<h1>` title and a `<p>` tagline on one ruled line. `<h2>` is a navy italic subtitle.
+- `<h3>` and table `<caption>` are navy bands like the plot headers, so a captioned table reads as a panel.
+- Tables collapse their borders, `thead` cells get the beige band, row headers in `tbody` size to their content, and cells use tabular figures. `<hr>` is a gray rule.
+- `<details>` is set off by a rule with a bold `<summary>`, and `<section>` blocks inside it get a border. `<pre>` wraps long lines and scrolls beyond 240 px.
+- `<footer>`, links, `<kbd>`, buttons, disabled buttons and focus rings get matching styles, and `[hidden]` always hides.
 
-`data-sse-graph-bytes` covers typed storage plus explicit node/bookkeeping allowances. A small part is reserved for restart markers, and each distinct source needs at least 4 KiB of usable capacity. Canvas/browser-native memory is additional. Inspection displays coarse intervals as envelopes and labels summarized history. Different inferred restart segments are not merged into one ordinary summary. If too many incompatible segments exhaust even summary capacity, oldest coverage expires and is counted. Marker retention is bounded separately and reports `markerEvictions`.
+These are plain element selectors, so your own rules for the same elements override them. The canvas takes its axis, tick and grid color from the computed `color` of `.turbo-sse-area`. Series colors come from a fixed six-color palette and are exposed to the legend as `--series-color`.
 
-Per-series `samples` counts retained valid measurements including those represented by summaries; `raw` counts exact retained records including gaps, `compacted` counts records converted to summaries, and `evicted` counts expired records. Accounted bytes are a limit on managed storage, not an exact JavaScript heap measurement.
-
-**JavaScript API**
+## JavaScript API
 
 ```javascript
-TurboSSE.init();       // Automatic on page load; repeated calls are harmless.
+TurboSSE.init();       // Runs automatically on page load; repeated calls are harmless.
 TurboSSE.refresh();    // Rescan bindings and re-resolve transforms after markup changes.
-TurboSSE.exportCSV();  // Download a CSV snapshot; also returns its string contents.
-TurboSSE.stats();      // Read counters, state, retained bytes, and lastEventId.
-TurboSSE.destroy();    // Close the stream, cancel work, release capture, remove the bar.
+TurboSSE.exportCSV();  // Download the raw events as CSV; also returns the CSV text.
+TurboSSE.stats();      // Counters, connection state, retained bytes and lastEventId.
+TurboSSE.destroy();    // Close the stream, cancel work, release data, remove generated UI.
 ```
 
-`init(rootElement)` can select the root explicitly. `refresh()` preserves unchanged append bindings, shared graph histories, inspection state, and previously registered event subscriptions. Label changes preserve graph data; changing a graph source or resolved transform resets that source. Removing one view does not erase a source still used by another. Destruction removes generated graph/export UI and releases its data and observers. `stats()` returns a copy with `received`, `retained`, `bytes`, `evicted`, `oversized`, `parseErrors`, `transformErrors`, `configErrors`, `appendDrops`, `state`, and `lastEventId`. It also includes `omitted`, `clockErrors`, `restarts`, `graphErrors`, `markerEvictions`, current estimated `uptime` (or null), `lastUptime`, `segment`, and `graphs`. `graphs` contains accounted `bytes`, plot count, and a series list with `id,label,event,raw,compacted,evicted,bytes,samples,gaps,from,to`; coverage is in browser elapsed seconds. Counters are cumulative since initialization. After destruction, `stats()` returns `null`; a later `init()` starts a fresh session. Destruction leaves already-rendered application values in the page.
+`init(rootElement)` selects the root explicitly. `refresh()` preserves unchanged append bindings, shared graph histories, inspection state and existing subscriptions. Label changes keep graph data; changing a graph source or its transform resets that source, and removing one plot keeps a source still used by another.
 
-**Build and test with Python 3.9**
+`stats()` returns a copy with `received`, `retained`, `bytes`, `evicted`, `oversized`, `parseErrors`, `transformErrors`, `configErrors`, `appendDrops`, `state`, `lastEventId`, `omitted`, `clockErrors`, `restarts`, `graphErrors`, `markerEvictions`, the estimated `uptime` (or `null`), `lastUptime`, `segment` and `graphs`. `graphs` holds the accounted `bytes`, the plot count, and a series list with `id,label,event,raw,compacted,evicted,bytes,samples,gaps,from,to`, where coverage is in browser elapsed seconds. `samples` counts retained measurements including those inside summaries, `raw` counts exact records including gaps, `compacted` counts records turned into summaries, and `evicted` counts expired records. Counters are cumulative since initialization.
+
+After `destroy()`, `stats()` returns `null` and a later `init()` starts a fresh session. Values already rendered into the page stay.
+
+## Serving from firmware
+
+The build writes two C headers for the script. Include one in the source file that serves it, so firmware keeps a single copy.
+
+| Header | Symbols | Serve with |
+| --- | --- | --- |
+| `dist/turbo-sse.h` | `turbo_sse_js`, `turbo_sse_js_len` | `Content-Type: text/javascript; charset=utf-8` |
+| `dist/turbo-sse-gzip.h` | `turbo_sse_js_gz`, `turbo_sse_js_gz_len` | The same type plus `Content-Encoding: gzip` |
+
+Each header defines a `const unsigned char[]` with the exact bytes of `turbo-sse.min.js` or `turbo-sse.min.js.gz`, and a `const size_t` length, both with internal linkage. Send exactly the given length; the arrays have no trailing NUL, and the gzip data contains NUL bytes, so never use `strlen`. With the gzip header the browser decompresses; the device compresses nothing at runtime. When sending `Content-Length`, use the compressed length. The headers have distinct symbols and include guards, so both can be used together. Adapt the storage placement to your platform if needed.
+
+The stylesheet is served as a file; `dist/turbo-sse.css.gz` is its precompressed variant. Serve any `.gz` asset with its original content type plus `Content-Encoding: gzip`, rather than linking to the `.gz` file directly.
+
+## Development
+
+### Build and test
+
+The tooling uses Python 3.9. [rjsmin](https://pypi.org/project/rjsmin/) is the only build dependency; Playwright is needed for the browser tests.
 
 ```sh
 python3.9 -m venv .venv39
@@ -289,87 +353,43 @@ PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright" .venv39/bin/python -m playwright ins
 .venv39/bin/python tools/build.py --check
 ```
 
-The tests run against real localhost SSE endpoints in Chromium, Firefox, and WebKit. They verify raw/JSON rendering, transforms and error isolation, append/capture limits, actual CSV downloads, reconnect cursors, watchdogs, terminal closure, and lifecycle cleanup. Run a single browser while developing:
+The build writes minified assets, deterministic `.gz` variants and both C headers to `dist/`, which is not committed. It reports the combined gzip size against a soft 8 KiB target and fails above the 18 KiB regression ceiling. `--check` fails if any generated file is stale.
+
+The tests run real localhost SSE endpoints in Chromium, Firefox and WebKit, covering rendering, transforms, capture limits, downloads, reconnects, watchdogs, plot interaction, exports and the demo page. Header tests compile C99 and C++11 programs against both headers, and need `cc` and `c++`. While developing:
 
 ```sh
-.venv39/bin/python -m unittest tests.test_browser.ChromiumTests -v
+.venv39/bin/python -m unittest tests.test_browser.ChromiumTests -v   # one engine
+TURBO_SSE_BROWSERS=chromium,firefox .venv39/bin/python -m unittest discover -s tests
+TURBO_SSE_ASSET=src/turbo-sse.js .venv39/bin/python -m unittest tests.test_graphs   # readable source
 ```
 
-`TURBO_SSE_BROWSERS=chromium,firefox` selects engines for discovery. `TURBO_SSE_ASSET=src/turbo-sse.js` exercises the readable source instead of the default minified asset. The Python tests and example require no Node.js installation. Playwright and rjsmin are development dependencies only.
-
-The build emits minified assets, deterministic `.gz` variants, and C headers for both JavaScript representations, and reports the soft 8 KiB combined gzip target and enforces an 18 KiB regression ceiling for JavaScript and CSS. When serving a precompressed `.gz` asset, keep the original JavaScript/CSS content type and send `Content-Encoding: gzip`; do not merely link to a `.gz` URL without that header.
-
-**Embed the JavaScript in firmware**
-
-Include `dist/turbo-sse.h` in the C or C++ source file that serves the library. It defines two symbols with internal linkage:
-
-| Symbol | Type | Meaning |
-| --- | --- | --- |
-| `turbo_sse_js` | `const unsigned char[]` | The minified JavaScript bytes |
-| `turbo_sse_js_len` | `const size_t` | Number of bytes to send |
-
-Send `turbo_sse_js_len` bytes from `turbo_sse_js` with `Content-Type: text/javascript; charset=utf-8`. The array contains the exact UTF-8 bytes of `turbo-sse.min.js`, uncompressed and without a trailing NUL. Use the length rather than `strlen`, and do not send `Content-Encoding: gzip` for these bytes. Include the header in the serving translation unit to avoid keeping extra copies in firmware; adapt storage placement to your platform if needed.
-
-For a smaller firmware payload, include `dist/turbo-sse-gzip.h`. It embeds the exact bytes of `turbo-sse.min.js.gz` and defines:
-
-| Symbol | Type | Meaning |
-| --- | --- | --- |
-| `turbo_sse_js_gz` | `const unsigned char[]` | Gzip-compressed minified JavaScript |
-| `turbo_sse_js_gz_len` | `const size_t` | Compressed byte length to send |
-
-Serve `turbo_sse_js_gz_len` bytes from `turbo_sse_js_gz` directly, with `Content-Type: text/javascript; charset=utf-8` and `Content-Encoding: gzip`. If sending `Content-Length`, use the compressed length. The browser decompresses the response; the device does not need to compress or decompress anything at runtime. Use the supplied length because gzip data contains embedded NUL bytes. The two headers have distinct symbols and include guards and can coexist when both representations are needed.
-
-The Python build creates both headers automatically, and `tools/build.py --check` checks them for staleness alongside the browser assets. Header tests compile C99 and C++11 programs that include both headers and write the embedded bytes, then compare their output against the corresponding files. Gzip output is also decompressed and compared with the original minified JavaScript. These tests require `cc` and `c++`, which are available on the GitHub-hosted Ubuntu runner.
-
-**GitHub Actions build**
-
-The `Build minified library` workflow runs on pushes, pull requests, published GitHub Releases, and manual dispatch. It uses Python 3.9, installs `requirements-build.txt`, builds the assets, checks the size budget and distribution, and uploads a `turbo-sse-dist` artifact containing:
-
-- `turbo-sse.min.js`
-- `turbo-sse.css`
-- Their precompressed `.gz` variants
-- `turbo-sse.h`, exposing the minified JavaScript for C/C++ firmware
-- `turbo-sse-gzip.h`, exposing the gzip-compressed minified JavaScript
-
-Download the artifact from the workflow run's **Artifacts** section. Artifacts are retained for 30 days. The workflow runs the server/distribution and C-header tests; the full browser suite remains available through the test command above. Distribution files are generated during the workflow and are not committed to Git.
-
-When a GitHub Release is published, a second job downloads the verified artifact and attaches all six files to that release's **Assets** section. The build job uses read-only repository permissions; only the release upload job gets `contents: write`. Creating or pushing a tag by itself produces an Actions artifact. Publish a GitHub Release for that tag to get release downloads automatically. The tagged commit must include this updated workflow for the automatic release trigger to run.
-
-To attach files to an existing release whose tag predates the workflow update:
-
-1. Commit and push this workflow to the default branch.
-2. Open **Actions → Build minified library → Run workflow** and select the default branch.
-3. Set **release_tag** to the existing tag (for example, `0.1.0`) and run it.
-
-The manual run checks out the specified tag, builds and verifies its files, and uploads them to the existing release. The tagged version must include the build script and header tests. Leave **release_tag** empty for a normal build without release uploads. Re-running a release upload replaces assets with matching filenames using `gh release upload --clobber`; it does not move the tag or create another release.
-
-To build locally without installing browser-test dependencies:
+### Benchmarks
 
 ```sh
-.venv39/bin/python -m pip install -r requirements-build.txt
-.venv39/bin/python tools/build.py
-```
-
-Run the reproducible benchmark:
-
-```sh
+# Raw, JSON and mixed bindings under load:
 .venv39/bin/python tools/benchmark.py --seconds 600 --rate 1000 --bindings 100 \
   --mode mixed --transform --output benchmarks/local.json
-```
-
-Use `--mode raw`, `mixed`, or `json`, and omit `--transform` to measure untransformed values. The benchmark includes a brief suspension of render callbacks to exercise pending queues. It records receive/transform and render callback timings, post-GC heap samples, capture evictions, and append drops. Render timings exclude browser layout/paint, and instrumented throughput is specific to the reported browser and hardware. See `benchmarks/` for measured results.
-
-**Graph verification and benchmarks**
-
-```sh
-.venv39/bin/python -m unittest tests.test_history tests.test_graphs -v
-# Eight hours of generated measurements, processed as an accelerated simulation:
+# Eight simulated hours of graph history, processed at full speed:
 .venv39/bin/python tools/benchmark_graphs.py --mode history --seconds 28800 \
   --rate 100 --channels 8 --output benchmarks/local-history.json
-# Actual wall-clock streaming; 30 minutes is the default live-test duration:
+# Real-time SSE streaming to four plots, with periodic exports:
 .venv39/bin/python tools/benchmark_graphs.py --mode soak --seconds 1800 \
   --rate 100 --channels 8 --budget 8388608 --export-every 300 \
   --output benchmarks/local-soak.json
 ```
 
-History mode exercises the production indexed store against independent numerical reference calculations. It does not wait for the simulated hours to elapse. Soak mode serves actual SSE to four Canvas panels and periodically builds CSV snapshots. Reports record the tested asset hash, browser, accounting/heap samples and callback timings. Callback duration excludes browser paint. See VALIDATION.md for which runs completed and which are observation-only.
+`tools/benchmark.py` accepts `--mode raw`, `mixed` or `json`; omit `--transform` to measure untransformed values. It briefly suspends rendering to exercise pending queues. History mode checks the production history store against independent reference statistics without waiting for the simulated time. Soak mode streams real SSE to canvas plots and verifies every export ZIP. Reports record the tested asset hash, browser, heap samples and callback timings; callback times exclude browser paint.
+
+### Continuous integration and releases
+
+The **Build minified library** workflow runs on pushes, pull requests, published releases and manual dispatch. It builds with Python 3.9, checks the size ceiling and generated files, runs the server and C header tests, and uploads a `turbo-sse-dist` artifact, kept for 30 days, with:
+
+- `turbo-sse.min.js` and `turbo-sse.css`
+- their `.gz` variants
+- `turbo-sse.h` and `turbo-sse-gzip.h`
+
+Publishing a GitHub Release attaches the same six files to it; pushing a tag alone only produces the artifact. The build job has read-only permissions, and only the release upload job can write. To attach files to an existing release, run the workflow manually from the default branch with **release_tag** set to its tag. It checks out and rebuilds that tag, which must already contain the build tooling, and replaces assets with the same names without moving the tag. Leave **release_tag** empty for a normal build.
+
+## Validation
+
+[VALIDATION.md](VALIDATION.md) records the test environment, numerical checks against reference statistics, live-run results, distribution sizes and the SHA-256 hashes of the tested build. The script and stylesheet total 18,364 bytes gzipped.
