@@ -45,7 +45,7 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual(a[15], len(values))
         self.assertEqual((a[6], a[7], a[12], a[13]), (-8000, 10000, 188.88, 3.11))
         self.assertAlmostEqual(a[8], statistics.mean(values), places=10)
-        self.assertAlmostEqual(a[9] / a[5], statistics.pvariance(values), places=7)
+        self.assertAlmostEqual(a[9] ** 2, statistics.pvariance(values), places=7)
         self.assertEqual(result["evicted"], 0)
         self.assertLessEqual(result["peak"], 16384)
         self.assertGreater(result["compacted"], 0)
@@ -108,6 +108,19 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual(result["compacted"], 0)
         self.assertLess(result["count"], 5000)
         self.assertEqual(result["narrow"][5], 3)
+
+    def test_extreme_finite_variance_does_not_overflow_or_underflow(self):
+        result = self.page.evaluate("""() => [1e308,1e-300].map(magnitude=>{
+            const h=new TestHistory(8192);
+            for(let i=0;i<4096;i++) h.add(i,i,(i%2?1:-1)*magnitude,0);
+            const a=h.range();
+            return {count:a[5],mean:a[8],deviation:a[9],min:a[6],max:a[7]};
+        })""")
+        for row, magnitude in zip(result, (1e308, 1e-300)):
+            self.assertEqual(row['count'],4096)
+            self.assertTrue(math.isfinite(row['mean']))
+            self.assertAlmostEqual(row['deviation']/magnitude,1,places=12)
+            self.assertEqual((row['min'],row['max']),(-magnitude,magnitude))
 
     def test_many_restarts_remain_bounded(self):
         result = self.page.evaluate("""() => {

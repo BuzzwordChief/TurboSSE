@@ -224,6 +224,87 @@ class GraphCases:
         expect(self.page.locator('#hidden .turbo-sse-series-value')).to_have_text('12')
         self.assertEqual(self.stats()['graphErrors'], 0)
 
+    def test_label_refresh_keeps_samples_and_updates_export_metadata(self):
+        self.open('<div id="plot" data-sse-graph><span id="source" data-sse-event="v" data-sse-label="Old"></span></div>')
+        self.case.emit('v','1');self.received(1)
+        self.page.evaluate('document.querySelector("#source").setAttribute("data-sse-label","New");TurboSSE.refresh()')
+        expect(self.page.locator('.turbo-sse-series-name')).to_have_text('New')
+        self.assertEqual(self.stats()['graphs']['series'][0]['samples'],1)
+        self.assertEqual(self.export_files()['s01-New.csv'][0]['series'],'New')
+
+    def test_extreme_values_produce_finite_canvas_coordinates(self):
+        self.open('<div data-sse-graph data-sse-event="big"></div><div data-sse-graph data-sse-event="tiny"></div>',
+                  functions='window.badCoordinates=0;for(const name of ["moveTo","lineTo","fillRect"]){const fn=CanvasRenderingContext2D.prototype[name];CanvasRenderingContext2D.prototype[name]=function(...args){if(args.some(v=>!Number.isFinite(v)))badCoordinates++;return fn.apply(this,args);};}')
+        for value in ('1e308','-1e308','1.7976931348623157e308'):
+            self.case.emit('big',value)
+        for value in ('1e-300','-1e-300'):
+            self.case.emit('tiny',value)
+        self.received(5)
+        self.page.wait_for_timeout(100)
+        self.assertEqual(self.page.evaluate('badCoordinates'),0)
+        self.assertEqual(self.stats()['graphErrors'],0)
+        files=self.export_files()
+        self.assertEqual(float(files['s01-big.csv'][2]['value']),1.7976931348623157e308)
+        self.assertEqual(float(files['s02-tiny.csv'][0]['value']),1e-300)
+
+    def test_incompatible_bounds_do_not_break_raw_capture(self):
+        self.open('<div data-sse-graph data-sse-event="v" data-sse-y-min="3" data-sse-y-max="2"></div><span id="plain" data-sse-event="v"></span>')
+        self.case.emit('v','7');self.received(1)
+        self.text('#plain','7')
+        self.assertEqual(self.stats()['configErrors'],1)
+        self.assertEqual(self.stats()['graphs']['plots'],0)
+        self.assertEqual(self.raw_rows()[0]['data'],'7')
+
+    def test_closed_export_releases_urls_and_new_snapshot_includes_new_data(self):
+        self.open('<div data-sse-graph data-sse-event="v"></div>')
+        self.case.emit('v','1');self.received(1)
+        first=self.export_files()
+        urls=self.page.locator('.turbo-sse-export-panel a').evaluate_all('(els)=>els.map(el=>el.href)')
+        self.page.locator('.turbo-sse-export-panel button').click()
+        self.assertTrue(self.page.evaluate('async urls=>(await Promise.all(urls.map(u=>fetch(u).then(()=>false,()=>true)))).every(Boolean)',urls))
+        self.case.emit('v','2');self.received(2)
+        second=self.export_files()
+        self.assertEqual(len(first['s01-v.csv']),1)
+        self.assertEqual(len(second['s01-v.csv']),2)
+
+    def test_touch_measurement_and_visible_first_marker(self):
+        self.context.close()
+        self.context=self.browser.new_context(has_touch=True,viewport={'width':600,'height':800},accept_downloads=True)
+        self.page=self.context.new_page();self.page.set_default_timeout(7000)
+        self.page.on('pageerror',lambda error:self.errors.append(str(error)))
+        self.open('<div data-sse-graph data-sse-event="v"></div>')
+        for i in range(8):
+            self.case.emit('v',str(i));self.page.wait_for_timeout(15)
+        self.received(8)
+        self.page.locator('.turbo-sse-tools select').select_option('Measure')
+        box=self.page.locator('canvas').bounding_box()
+        self.page.touchscreen.tap(box['x']+120,box['y']+90)
+        expect(self.page.locator('.turbo-sse-selection')).to_be_visible()
+        self.page.touchscreen.tap(box['x']+400,box['y']+100)
+        expect(self.page.locator('.turbo-sse-measure')).to_contain_text('Δt')
+        expect(self.page.locator('.turbo-sse-measure')).to_contain_text('mean')
+
+    def test_selected_view_exports_only_its_series_and_interval(self):
+        self.open('<div id="a" data-sse-graph data-sse-event="v"></div><div data-sse-graph data-sse-event="w"></div>')
+        for i in range(16):
+            self.case.emit('v',str(i));self.case.emit('w',str(i));self.page.wait_for_timeout(12)
+        self.received(32)
+        box=self.page.locator('#a canvas').bounding_box()
+        self.page.mouse.move(box['x']+170,box['y']+90);self.page.mouse.down()
+        self.page.mouse.move(box['x']+650,box['y']+90,steps=5);self.page.mouse.up()
+        self.page.locator('#a [data-action="Export view"]').click()
+        files=self.export_files(prepare=False)
+        self.assertEqual(list(files),['s01-v.csv'])
+        self.assertGreater(len(files['s01-v.csv']),0)
+        self.assertLess(len(files['s01-v.csv']),16)
+
+    def test_source_asset_graphs_and_uptime_boot_without_build(self):
+        self.case,url=self.server.add('<div data-sse-graph data-sse-event="v"></div>',asset='src/turbo-sse.js')
+        self.page.goto(url);self.text('.turbo-sse-status','Connected')
+        self.case.emit('uptime','123.5');self.case.emit('v','2.5');self.received(2)
+        self.assertGreaterEqual(self.stats()['uptime'],123.5)
+        self.assertEqual(self.export_files()['s01-v.csv'][0]['value'],'2.5')
+
 
 for _engine in os.environ.get('TURBO_SSE_BROWSERS', 'chromium,firefox,webkit').split(','):
     _name = _engine.strip()

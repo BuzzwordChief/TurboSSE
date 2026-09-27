@@ -85,15 +85,21 @@
   }
 
   // Aggregate: start/end time, start/end uptime, segment, count, min, max,
-  // mean, M2, first/last value, min/max time, gaps, total records.
+  // mean, population deviation, first/last value, min/max time, gaps, records.
   const FIELDS = 16, BLOCK = 128, NODE_BYTES = 256, DATA_BYTES = BLOCK * 3 * 8;
   function sample(a, t, u, y, segment) {
     if (!a[15]) { a[0] = t; a[2] = u; a[4] = segment; a[6] = Infinity; a[7] = -Infinity; a[10] = a[11] = NaN; }
     a[1] = t; a[3] = u; a[15]++;
     if (!Number.isFinite(y)) { a[14]++; return a; }
-    const n = ++a[5], delta = y - a[8];
-    a[8] += delta / n;
-    a[9] += delta * (y - a[8]);
+    const n = ++a[5], delta = y - a[8], weight = (n - 1) / n;
+    if (n === 1) { a[8] = y; a[9] = 0; }
+    else {
+      // Store deviation rather than its square to avoid variance overflow and
+      // underflow for finite signals near the ends of Float64's range.
+      const correction = Number.isFinite(delta) ? delta * Math.sqrt(weight) / Math.sqrt(n) : (y / n - a[8] / n) * Math.sqrt(n - 1);
+      a[9] = Math.hypot(a[9] * Math.sqrt(weight), correction);
+      a[8] = Number.isFinite(delta) ? a[8] + delta / n : a[8] * weight + y / n;
+    }
     if (n === 1) a[10] = y;
     a[11] = y;
     if (y < a[6]) { a[6] = y; a[12] = t; }
@@ -107,8 +113,9 @@
     c[5] = n;
     if (!a[5]) { c[8] = b[8]; c[9] = b[9]; c[10] = b[10]; }
     else if (b[5]) {
-      c[8] = a[8] + delta * b[5] / n;
-      c[9] = a[9] + b[9] + delta * delta * (a[5] / n) * b[5];
+      const p = a[5] / n, q = b[5] / n, weight = Math.sqrt(p * q);
+      c[8] = Number.isFinite(delta) ? a[8] + delta * q : a[8] * p + b[8] * q;
+      c[9] = Math.hypot(a[9] * Math.sqrt(p), b[9] * Math.sqrt(q), Number.isFinite(delta) ? delta * weight : b[8] * weight - a[8] * weight);
     }
     if (b[5]) c[11] = b[11];
     if (b[6] < a[6]) { c[6] = b[6]; c[12] = b[12]; }
@@ -225,21 +232,22 @@
       this.query(lo, hi, 0, a => { value = value ? combine(value, a) : a.slice(); }, true);
       return value;
     }
-    nearest(t) {
+    nearest(t, past = false) {
       let found = null, distance = Infinity;
       for (const n of [...this.roots, this.current]) {
         if (!n) continue;
+        if (past) { if (n.a[0] <= t) found = n; continue; }
         const d = Math.max(n.a[0] - t, t - n.a[1], 0);
         if (d <= distance) { found = n; distance = d; }
       }
       if (!found) return null;
-      while (found.left) found = t < (found.left.a[1] + found.right.a[0]) / 2 ? found.left : found.right;
+      while (found.left) found = t < (past ? found.right.a[0] : (found.left.a[1] + found.right.a[0]) / 2) ? found.left : found.right;
       if (!found.data) return {a: found.a, summary: true};
       const data = found.data;
       let lo = 0, hi = found.a[15];
       while (lo < hi) { const mid = (lo + hi) >> 1; if (data[mid * 3] <= t) lo = mid + 1; else hi = mid; }
       let i = Math.max(0, lo - 1);
-      if (lo < found.a[15] && data[lo * 3] - t < t - data[i * 3]) i = lo;
+      if (!past && lo < found.a[15] && data[lo * 3] - t < t - data[i * 3]) i = lo;
       const a = sample(new Float64Array(FIELDS), data[i * 3], data[i * 3 + 1], data[i * 3 + 2], found.a[4]);
       return {a, summary: false};
     }
@@ -275,7 +283,11 @@
   }
 
   const palette = ["#235d9c", "#b04a25", "#247766", "#8051a1", "#9a7017", "#3c7180"];
-  const format = value => Number.isFinite(value) ? String(Number(value.toPrecision(5))) : "—";
+  const format = value => {
+    if (!Number.isFinite(value)) return "—";
+    const rounded = Number(value.toPrecision(5));
+    return Number.isFinite(rounded) ? String(rounded) : value.toExponential(4);
+  };
   function make(tag, className, text, parent) {
     const node = document.createElement(tag);
     node.className = className;
@@ -289,8 +301,10 @@
     return value;
   }
   function ticks(lo, hi, count) {
-    const base = Math.pow(10, Math.floor(Math.log10((hi - lo) / count)));
-    const step = [1, 2, 5, 10].find(v => v * base >= (hi - lo) / count) * base;
+    const scale = Math.max(Math.abs(lo), Math.abs(hi), Number.MIN_VALUE);
+    const desired = Math.max(Number.MIN_VALUE, (hi / scale - lo / scale) / count * scale);
+    const base = Math.max(Number.MIN_VALUE, Math.pow(10, Math.floor(Math.log10(desired))));
+    const step = [1, 2, 5, 10].find(v => v * base >= desired) * base;
     const values = [];
     if (!Number.isFinite(step) || step <= 0) return values;
     for (let v = Math.ceil(lo / step) * step; v <= hi && values.length < 20; v += step) values.push(v);
@@ -406,6 +420,7 @@
       });
       this.observer = new ResizeObserver(() => hooks.invalidate());
       this.observer.observe(this.area);
+      listen(window, "scroll", () => hooks.invalidate(), {passive: true});
     }
     trimHistory() { if (this.view.history.length > 20) this.view.history.shift(); }
     save() { this.view.history.push({lo: this.view.lo, hi: this.view.hi, live: this.view.live}); this.trimHistory(); }
@@ -426,10 +441,11 @@
     }
     time(event) { const rect = this.canvas.getBoundingClientRect(); return this.view.lo + Math.max(0, Math.min(this.width, event.clientX - rect.left - 64)) / this.width * (this.view.hi - this.view.lo); }
     x(t) { return 64 + (t - this.view.lo) / (this.view.hi - this.view.lo) * this.width; }
-    value(y) { return this.yMax - (y - 12) / this.height * (this.yMax - this.yMin); }
+    value(y) { const f = Math.max(0, Math.min(1, (y - 12) / this.height)); return this.yMax * (1 - f) + this.yMin * f; }
     band(a, b) {
-      this.selection.hidden = a === null || b === null;
+      this.selection.hidden = a === null;
       if (this.selection.hidden) return;
+      if (b === null) b = a;
       const x = Math.max(64, Math.min(this.x(a), this.x(b))), end = Math.min(64 + this.width, Math.max(this.x(a), this.x(b)));
       this.selection.style.cssText = `left:${x}px;top:12px;width:${Math.max(0,end-x)}px;height:${this.height}px`;
     }
@@ -440,7 +456,7 @@
       this.horizontal.hidden = this.cursor.hidden || this.cursorY == null;
       if (!this.horizontal.hidden) this.horizontal.style.cssText = `left:64px;top:${this.cursorY}px;width:${this.width}px`;
       this.sources.forEach((c, i) => {
-        const point = c.history.nearest(t === null ? Infinity : t), a = point && point.a;
+        const point = c.history.nearest(t === null ? g.hi : t, t === null), a = point && point.a;
         this.values[i].textContent = !a || !a[5] ? "—" : (point.summary ? `${format(a[6])}…${format(a[7])} (mean ${format(a[8])}, n=${a[5]})` : format(a[8])) + (c.unit ? " " + c.unit : "");
       });
       if (t !== null) {
@@ -451,6 +467,8 @@
     }
     draw() {
       if (!this.host.isConnected || !this.area.clientWidth || !this.area.getClientRects().length) return;
+      const rect = this.area.getBoundingClientRect();
+      if (rect.bottom < 0 || rect.top > innerHeight) return;
       const w = this.area.clientWidth, h = this.area.clientHeight, dpr = Math.min(3, window.devicePixelRatio || 1), g = this.view;
       this.width = Math.max(1, w - 80); this.height = Math.max(1, h - 48);
       if (this.canvas.width !== Math.round(w * dpr) || this.canvas.height !== Math.round(h * dpr)) { this.canvas.width = Math.round(w * dpr); this.canvas.height = Math.round(h * dpr); }
@@ -462,11 +480,13 @@
         if (a && a[5]) { low = Math.min(low, a[6]); high = Math.max(high, a[7]); retained += a[5]; }
       }
       if (!Number.isFinite(low)) { low = 0; high = 1; }
-      const pad = (high - low || Math.abs(high) || 1) * .06;
-      this.yMin = this.y ? this.y[0] : this.min === null ? low - pad : this.min;
-      this.yMax = this.y ? this.y[1] : this.max === null ? high + pad : this.max;
-      if (this.yMin >= this.yMax) this.yMax = this.yMin + Math.max(1, Math.abs(this.yMin) * .01);
-      const y = v => 12 + (this.yMax - v) / (this.yMax - this.yMin) * this.height;
+      const magnitude = Math.max(Math.abs(low), Math.abs(high)) || 1;
+      const pad = Math.max(Number.MIN_VALUE, ((high / magnitude - low / magnitude) || 1) * .06 * magnitude);
+      this.yMin = this.y ? this.y[0] : this.min === null ? Math.max(-Number.MAX_VALUE, low - pad) : this.min;
+      this.yMax = this.y ? this.y[1] : this.max === null ? Math.min(Number.MAX_VALUE, high + pad) : this.max;
+      if (this.yMin >= this.yMax) { this.yMax = Math.min(Number.MAX_VALUE, this.yMin + pad); this.yMin = Math.max(-Number.MAX_VALUE, this.yMin - pad); }
+      const scale = Math.max(Math.abs(this.yMin), Math.abs(this.yMax), Number.MIN_VALUE);
+      const y = v => 12 + (this.yMax / scale - v / scale) / (this.yMax / scale - this.yMin / scale) * this.height;
       ctx.font = "11px system-ui"; ctx.fillStyle = "#344454"; ctx.strokeStyle = "#dce3e9"; ctx.lineWidth = .7;
       ctx.textAlign = "right";
       for (const v of ticks(this.yMin, this.yMax, 5)) { const p = y(v); ctx.beginPath(); ctx.moveTo(60, p); ctx.lineTo(w - 16, p); ctx.stroke(); ctx.fillText(format(v), 56, p + 4); }
@@ -503,7 +523,10 @@
       ctx.restore(); ctx.setLineDash([]);
       if (!retained) { ctx.textAlign = "center"; ctx.fillStyle = "#647586"; ctx.fillText("Waiting for valid data", 64 + this.width / 2, h / 2); }
       this.controls.children[0].setAttribute("aria-pressed", String(g.live));
-      this.baseReadout = (g.live ? "Live" : "Inspecting") + ` · ${format(g.lo)}–${format(g.hi)} s · ${retained} samples`;
+      this.baseReadout = (g.live ? "Live" : "Inspecting") + ` · ${format(g.lo)}–${format(g.hi)} s · ${retained} samples` +
+        (this.sources.some(c => c.history.compacted) ? " · older history summarized" : "") +
+        (this.sources.some(c => c.history.evicted) ? " · oldest coverage expired" : "") +
+        (g.a !== null && g.b === null ? " · A " + format(g.a) + " s" : "");
       this.band(g.a, g.b); this.inspect();
       this.measure.replaceChildren();
       if (g.a !== null && g.b !== null) {
@@ -513,7 +536,7 @@
           if (this.hidden.has(c)) continue;
           const a = c.history.range(lo, hi), left = c.history.nearest(lo), right = c.history.nearest(hi);
           if (!a || !a[5]) continue;
-          const sd = Math.sqrt(Math.max(0, a[9] / a[5]));
+          const sd = a[9];
           let text = `${c.label}: n ${a[5]} · min ${format(a[6])} · max ${format(a[7])} · p-p ${format(a[7]-a[6])} · mean ${format(a[8])} · RMS ${format(Math.hypot(a[8],sd))} · σ ${format(sd)} ${c.unit}`;
           if (left && right && left.a[5] && right.a[5]) {
             const dy = right.a[8]-left.a[8], seconds = right.a[0]-left.a[0];
@@ -529,7 +552,7 @@
   }
 
   function start(root) {
-    const counts = {received: 0, evicted: 0, oversized: 0, parseErrors: 0, transformErrors: 0, configErrors: 0, appendDrops: 0, omitted: 0, clockErrors: 0, restarts: 0, graphErrors: 0};
+    const counts = {received: 0, evicted: 0, oversized: 0, parseErrors: 0, transformErrors: 0, configErrors: 0, appendDrops: 0, omitted: 0, clockErrors: 0, restarts: 0, graphErrors: 0, markerEvictions: 0};
     let capture;
     let timeout = 0;
     let source = null;
@@ -590,19 +613,24 @@
       return Object.assign({}, counts, {state, retained: capture ? capture.size : 0, bytes: capture ? capture.bytes : 0, lastEventId: lastId,
         uptime: Number.isFinite(u) ? u : null, lastUptime: clock.value, segment: clock.segment,
         graphs: {bytes: Array.from(channels.values()).reduce((n, c) => n + c.history.bytes, restarts.length * 128),
-          plots: plots.size, series: Array.from(channels.values(), c => ({id: c.id, label: c.label, event: c.event,
-            raw: c.history.raw, compacted: c.history.compacted, evicted: c.history.evicted, bytes: c.history.bytes}))}});
+          plots: plots.size, series: Array.from(channels.values(), c => {
+            const a = c.history.range();
+            return {id: c.id, label: c.label, event: c.event, raw: c.history.raw, compacted: c.history.compacted,
+              evicted: c.history.evicted, bytes: c.history.bytes, samples: a ? a[5] : 0, gaps: a ? a[14] : 0,
+              from: a ? a[0] : null, to: a ? a[1] : null};
+          })}});
     }
 
     function counters() {
       const s = stats();
       let text = "Captured: " + s.retained + " · Evicted: " + s.evicted;
-      for (const [key, label] of [["omitted", "Omitted"], ["oversized", "Oversized"], ["appendDrops", "Append drops"], ["parseErrors", "JSON errors"], ["transformErrors", "Transform errors"], ["configErrors", "Config errors"], ["clockErrors", "Clock errors"], ["graphErrors", "Graph errors"]]) {
+      for (const [key, label] of [["omitted", "Omitted"], ["oversized", "Oversized"], ["appendDrops", "Append drops"], ["parseErrors", "JSON errors"], ["transformErrors", "Transform errors"], ["configErrors", "Config errors"], ["clockErrors", "Clock errors"], ["graphErrors", "Graph errors"], ["markerEvictions", "Expired markers"]]) {
         if (s[key]) text += " · " + label + ": " + s[key];
       }
       if (counter.textContent !== text) counter.textContent = text;
       uptimeDisplay.textContent = s.uptime === null ? "Uptime —" + (clock.value === null ? "" : " (unsynchronized)") :
         "Uptime ≈" + [Math.floor(s.uptime / 3600), Math.floor(s.uptime / 60) % 60, Math.floor(s.uptime) % 60].map(v => String(v).padStart(2, "0")).join(":");
+      if (Array.from(groups.values()).some(g => g.live)) invalidate();
     }
 
     function fragment(element, text, html) {
@@ -654,7 +682,11 @@
         if (performance.now() - lastDraw < 33) { frame = requestAnimationFrame(flush); return; }
         graphDirty = false;
         lastDraw = performance.now();
-        for (const g of groups.values()) if (g.live) { const r = extent(g); g.lo = Math.max(r[0], r[1] - g.window); g.hi = Math.max(g.lo + .001, r[1]); }
+        for (const g of groups.values()) {
+          const r = extent(g);
+          if (g.live) { const end = Math.max(r[1], (performance.now() - started) / 1000); g.lo = Math.max(r[0], end - g.window); g.hi = Math.max(g.lo + .001, end); }
+          else if (g.hi < r[0]) { const span = g.hi - g.lo; g.lo = r[0]; g.hi = Math.max(g.lo + .001, Math.min(r[1], g.lo + span)); g.cursor = null; }
+        }
         for (const p of plots.values()) {
           if (p.failed) continue;
           try { p.draw(); }
@@ -681,7 +713,7 @@
             clock.segment++;
             counts.restarts++;
             restarts.push({time: record.elapsed / 1000 - value, detected: record.elapsed / 1000, segment: clock.segment});
-            if (restarts.length > clockBudget / 128) restarts.shift();
+            if (restarts.length > clockBudget / 128) { restarts.shift(); counts.markerEvictions++; }
             invalidate();
           }
           clock.value = value; clock.at = elapsed; clock.synced = true; clock.compare = false;
@@ -786,6 +818,8 @@
             if (swap !== "replace" || format !== "text") throw new Error("Graphs require replace/text bindings");
             const windowSeconds = option(host, "window", 60);
             if (windowSeconds <= 0) throw new Error("Graph window must be positive");
+            const min = option(host, "y-min", null), max = option(host, "y-max", null);
+            if (min !== null && max !== null && min >= max) throw new Error("Graph y-min must be below y-max");
             const unit = attr(element, "unit") || "", key = JSON.stringify([name, path, fn, unit]);
             let c = nextChannels.get(key) || channels.get(key);
             if (!c || c.transform !== transform) c = {id: ++serial, event: name, path: attr(element, "json") || "", fn: fn || "", transform, unit,
@@ -794,6 +828,7 @@
             const series = hosts.get(host);
             if (series.length && series[0].unit !== unit) throw new Error("Use synchronized panels for different units");
             if (!nextChannels.has(key) && (nextChannels.size + 1) * 4096 > graphBudget - clockBudget) throw new Error("Graph budget too small for series count");
+            if (!nextChannels.has(key)) c.label = attr(element, "label") || name;
             nextChannels.set(key, c);
             if (!series.includes(c)) series.push(c);
             b.series = c; b.directGraph = element === host;
@@ -812,8 +847,9 @@
           const key = attr(host, "sync") || host;
           let view = nextGroups.get(key) || groups.get(key);
           if (!view) view = {lo: 0, hi: 1, live: true, window: option(host, "window", 60), history: [], cursor: null, a: null, b: null};
+          if (!nextGroups.has(key)) view.window = option(host, "window", 60);
           nextGroups.set(key, view);
-          const signature = JSON.stringify([series.map(c => c.id), attr(host, "y-min"), attr(host, "y-max"), attr(host, "window"), attr(host, "label")]);
+          const signature = JSON.stringify([series.map(c => [c.id, c.label]), attr(host, "y-min"), attr(host, "y-max"), attr(host, "window"), attr(host, "label")]);
           let plot = plots.get(host);
           if (plot && (plot.signature !== signature || plot.view !== view)) { plot.destroy(); plot = null; }
           if (!plot) plot = new Plot(host, series, view, {invalidate, extent, restarts: () => restarts,
@@ -970,7 +1006,7 @@
               const kind = !b[5] ? "gap" : point.summary ? "summary" : "sample";
               yield csvRow([...meta, kind, b[0], b[1], b[2], b[3], b[4], kind === "sample" ? b[8] : null, b[5],
                 point.summary && b[5] ? b[6] : null, point.summary && b[5] ? b[7] : null,
-                point.summary && b[5] ? b[8] : null, point.summary && b[5] ? Math.sqrt(Math.max(0, b[9] / b[5])) : null,
+                point.summary && b[5] ? b[8] : null, point.summary && b[5] ? b[9] : null,
                 point.summary && b[5] ? b[10] : null, point.summary && b[5] ? b[11] : null,
                 point.summary && b[5] ? b[12] : null, point.summary && b[5] ? b[13] : null, b[14], null]);
             }
