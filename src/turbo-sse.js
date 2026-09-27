@@ -594,7 +594,7 @@
 
     function setState(value) {
       if (state === "Connected" && value !== "Connected") {
-        for (const c of channels.values()) c.history.add((performance.now() - started) / 1000, NaN, NaN, clock.segment);
+        for (const c of channels.values()) graphPoint(c, (performance.now() - started) / 1000, NaN, NaN);
         invalidate();
       }
       state = value;
@@ -606,6 +606,27 @@
 
     function uptime(time) {
       return clock.synced ? clock.value + (time - clock.at) / 1000 : NaN;
+    }
+
+    function shareBudget(owner) {
+      const histories = Array.from(channels.values(), c => c.history);
+      let spare = graphBudget - clockBudget - histories.reduce((n, h) => n + h.bytes, 0);
+      while (owner ? owner.bytes + spare < 4096 : spare < 0) {
+        const donor = histories.filter(h => h !== owner && h.bytes > 4096).sort((a, b) => b.bytes - a.bytes)[0];
+        if (!donor) throw new Error("Graph budget too small");
+        const before = donor.bytes;
+        donor.resize(Math.max(4096, before - (owner ? 4096 - owner.bytes - spare : -spare)));
+        spare += before - donor.bytes;
+      }
+      if (owner) owner.limit = owner.bytes + spare;
+    }
+
+    function graphPoint(c, t, u, value) {
+      const h = c.history;
+      // Reserve only when a chunk/segment is about to grow. A busy channel can
+      // use idle channels' space instead of prematurely reducing its history.
+      if (!h.current || h.current.a[15] === BLOCK || h.current.a[4] !== clock.segment) shareBudget(h);
+      h.add(t, u, value, clock.segment);
     }
 
     function stats() {
@@ -728,7 +749,7 @@
         if (value === undefined) { c.text = undefined; return; }
         const y = value === null ? NaN : numeric(value);
         if (value !== null && !Number.isFinite(y)) counts.graphErrors++;
-        c.history.add(record.elapsed / 1000, uptime(elapsed), y, clock.segment);
+        graphPoint(c, record.elapsed / 1000, uptime(elapsed), y);
         c.text = Number.isFinite(y) ? String(y) : "—";
         invalidate();
         return c.text;
@@ -840,7 +861,7 @@
         } catch (error) { configError(error); }
       }
       channels = nextChannels;
-      for (const c of channels.values()) c.history.resize(Math.floor((graphBudget - clockBudget) / channels.size));
+      shareBudget(null);
       for (const [host, series] of hosts) {
         if (!series.length) continue;
         try {

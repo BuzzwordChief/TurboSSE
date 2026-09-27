@@ -305,6 +305,23 @@ class GraphCases:
         self.assertGreaterEqual(self.stats()['uptime'],123.5)
         self.assertEqual(self.export_files()['s01-v.csv'][0]['value'],'2.5')
 
+    def test_busy_channel_can_use_idle_channels_memory(self):
+        self.open(''.join('<div data-sse-graph data-sse-event="v{}"></div>'.format(i) for i in range(4)),
+                  'data-sse-graph-bytes="65536"')
+        for i in range(1000):self.case.emit('v0',str(i))
+        self.received(1000)
+        self.assertEqual(self.stats()['graphs']['series'][0]['compacted'],0)
+        for i in range(1000,7000):self.case.emit('v0',str(i))
+        self.received(7000)
+        for j in range(1,4):
+            for i in range(400):self.case.emit('v'+str(j),str(i))
+        self.received(8200)
+        g=self.stats()['graphs']
+        self.assertLessEqual(g['bytes'],65536)
+        self.assertEqual([c['samples'] for c in g['series']],[7000,400,400,400])
+        self.assertEqual(self.stats()['graphErrors'],0)
+        self.assertEqual(self.stats()['transformErrors'],0)
+
 
 for _engine in os.environ.get('TURBO_SSE_BROWSERS', 'chromium,firefox,webkit').split(','):
     _name = _engine.strip()
