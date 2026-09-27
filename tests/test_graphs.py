@@ -340,6 +340,20 @@ class GraphCases:
         self.case.disconnect(); self.wait_requests(2); self.text('.turbo-sse-status', 'Connected')
         self.assertEqual(self.lane('State')['raw'], 4)
 
+    def test_lane_values_get_distinct_colors(self):
+        self.open('<div id="a" data-sse-graph data-sse-event="s" data-sse-discrete data-sse-label="First"></div>'
+                  '<div id="b" data-sse-graph data-sse-event="t" data-sse-discrete data-sse-label="Second"></div>')
+        colors = {}
+        for plot, event, value in (('#a', 's', 'S2'), ('#a', 's', 'S3'), ('#b', 't', 'S3')):
+            self.case.emit(event, value)
+            expect(self.page.locator(plot + ' .turbo-sse-series-value')).to_have_text(value)
+            colors[plot, value] = self.page.locator(plot + ' .turbo-sse-legend > *').evaluate('e => e.style.getPropertyValue("--series-color")')
+        # S2 and S3 hash to the same first color. Sharing a lane, the later value takes its second color;
+        # alone in another lane, S3 keeps its first color.
+        self.assertNotEqual(colors['#a', 'S2'], colors['#a', 'S3'])
+        self.assertEqual(colors['#b', 'S3'], colors['#a', 'S2'])
+        self.assertEqual(colors['#a', 'S2'], 'hsl(215,45%,30%)')
+
     def test_logic_lane_levels_and_invalid_values(self):
         self.open('<div id="p" data-sse-graph data-sse-event="p" data-sse-discrete="logic" data-sse-label="Pump"></div>'
                   '<div id="q" data-sse-graph data-sse-event="q" data-sse-discrete="enum"></div>')

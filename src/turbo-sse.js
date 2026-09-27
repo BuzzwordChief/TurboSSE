@@ -289,13 +289,18 @@
     return magnitude && (magnitude >= 1e6 || magnitude < .001) ? value.toExponential(4).replace(/\.?0+e/, "e") : String(Number(value.toPrecision(5)));
   };
   const put = (node, text) => { if (node.textContent !== text) node.textContent = text; };
-  // Discrete lanes: each value's color comes from a hash of its text, so a value looks the same everywhere.
-  const LANE = 20;
-  const tint = (text, light) => {
-    let hash = 2166136261;
-    for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
-    return `hsl(${(hash >>> 0) % 360},${light ? "70%,88%" : "45%,35%"})`;
+  // Discrete lanes. A well-mixed hash of a value's text picks two of 24 colors: eight hue families near the page's
+  // own palette, each in three pastel tints that keep black text readable. The second color always has another hue.
+  // A value takes its first color unless another value in the same lane already has that hue or that color.
+  const LANE = 20, HUES = [0, 35, 60, 120, 180, 215, 270, 320];
+  const choices = text => {
+    let h = 2166136261;
+    for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+    h = Math.imul(h ^ h >>> 16, 2246822507); h = Math.imul(h ^ h >>> 13, 3266489909); h = (h ^ h >>> 16) >>> 0;
+    const first = h % 24;
+    return [first, (h >>> 16) % 3 * 8 + (first % 8 + 1 + (h >>> 20) % 7) % 8];
   };
+  const shade = (slot, fill) => `hsl(${HUES[slot % 8]},${fill ? "80%," + [88, 78, 64][slot >> 3] : "45%,30"}%)`;
   // Shorten text with an ellipsis to fit a width in pixels; empty when nothing fits.
   const clip = (ctx, text, room) => {
     const width = ctx.measureText(text).width, keep = Math.floor(text.length * room / width) - 1;
@@ -536,7 +541,7 @@
         const point = c.history.nearest(t === null ? g.hi : t, t === null || !!c.lane), a = point && point.a;
         if (c.lane) {
           const text = !a ? "—" : point.summary ? "…" : a[8] >= 0 ? c.values[a[8]] : "—", style = this.values[i].parentElement.style;
-          const color = c.lane == "bus" && c.index.has(text) ? tint(text) : style.getPropertyValue("--series-color");
+          const color = c.lane == "bus" && a && !point.summary && a[8] >= 0 ? shade(c.slots[a[8]]) : style.getPropertyValue("--series-color");
           put(this.values[i], text);
           if (style.getPropertyValue("--series-color") !== color) style.setProperty("--series-color", color);
           return;
@@ -645,7 +650,7 @@
           }
           const slant = Math.min(3, (x1 - x0) / 2), a = Math.max(x0, L), b = Math.min(x1, end), label = clip(ctx, text, b - a - 8);
           ctx.beginPath(); ctx.moveTo(x0, mid); ctx.lineTo(x0 + slant, top); ctx.lineTo(x1 - slant, top); ctx.lineTo(x1, mid); ctx.lineTo(x1 - slant, bottom); ctx.lineTo(x0 + slant, bottom); ctx.closePath();
-          ctx.fillStyle = tint(text, 1); ctx.fill(); ctx.strokeStyle = tint(text); ctx.stroke();
+          ctx.fillStyle = shade(c.slots[value], 1); ctx.fill(); ctx.strokeStyle = shade(c.slots[value]); ctx.stroke();
           if (label) { ctx.fillStyle = "#000"; ctx.fillText(label, (a + b) / 2, mid); }
         };
         const busy = (t0, t1, n, summary) => {
@@ -949,7 +954,11 @@
           }
           y = text ? c.index.get(text) : -1;
           if (y === undefined) {
-            if (c.values.length < 1024) c.index.set(text, y = c.values.push(text) - 1);
+            if (c.values.length < 1024) {
+              const [first, second] = choices(text), hue = slot => c.slots.some(s => s % 8 == slot % 8);
+              c.slots.push(hue(first) && !hue(second) || c.slots.includes(first) && !c.slots.includes(second) ? second : first);
+              c.index.set(text, y = c.values.push(text) - 1);
+            }
             else { counts.graphErrors++; y = -1; }
           }
           c.text = text || "—";
@@ -1054,7 +1063,7 @@
             const unit = attr(element, "unit") || "", key = JSON.stringify([name, path, fn, unit, lane]);
             let c = nextChannels.get(key) || channels.get(key);
             if (!c || c.transform !== transform) c = {id: ++serial, event: name, path: attr(element, "json") || "", fn: fn || "", transform, unit, lane,
-              values: [], index: new Map(), label: attr(element, "label") || name, history: new History(graphBudget - clockBudget), tick: -1};
+              values: [], index: new Map(), slots: [], label: attr(element, "label") || name, history: new History(graphBudget - clockBudget), tick: -1};
             if (!hosts.has(host)) hosts.set(host, []);
             const series = hosts.get(host), first = series.find(s => !s.lane);
             if (!lane && first && first.unit !== unit) throw new Error("Use synchronized panels for different units");

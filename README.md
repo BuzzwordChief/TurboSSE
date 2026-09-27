@@ -10,7 +10,7 @@ Debug pages for embedded devices, driven by Server-Sent Events. Bind events to v
 
 - **Attribute bindings.** `data-sse-event`, JSON Pointer selection and your own transform functions update text, trusted HTML or append-only logs. The page needs no framework or build step.
 - **Scientific plots.** Canvas time series with synchronized windows and cursors, pan, zoom, range zoom and live follow. A/B measurements give count, extrema, peak-to-peak, mean, RMS, standard deviation, Δy and slope.
-- **Discrete lanes.** States, registers and flags draw as timing-diagram lanes under a curve or on their own, with a stable color per value and measurements of dwell time and changes.
+- **Discrete lanes.** States, registers and flags draw as timing-diagram lanes under a curve or on their own, with distinct, stable colors per value and measurements of dwell time and changes.
 - **Bounded history.** Plots keep exact samples while their memory budget allows, then summarize older data without losing counts, extrema, means or deviations.
 - **One-click exports.** Every export downloads one ZIP with the original events, one CSV per series and an `export.txt` describing the snapshot.
 - **Connection awareness.** A sticky topbar shows connection state, estimated device uptime and capture counters. Plots mark estimated device restarts, and stalled streams reconnect with a resume cursor.
@@ -181,7 +181,7 @@ Add `data-sse-discrete` to a series to draw it as a lane: a timing-diagram row f
 - **Modes.** `data-sse-discrete` alone, or `data-sse-discrete="bus"`, draws each value as a labelled segment with slanted ends at every change. `data-sse-discrete="logic"` draws a two-level signal: `1`, `true`, `on`, `high` and non-zero numbers are high; `0`, `false`, `off` and `low` are low, ignoring case.
 - **Values.** A lane's value is its text after JSON selection and the transform, so a transform may return a string such as `0xf23a`. A value holds until the next change; repeated values only confirm it, and only changes are stored. Missing, empty and unrecognized values leave a gap, as does a disconnect, so send the current value again after connecting. Unrecognized logic values count as Graph errors.
 - **Drawing.** Lanes are one text line tall and stack below the numeric area in markup order, sharing its time axis. A graph with only lanes has no y axis, and its height follows its lanes. Lane names sit in the left gutter; synced graphs share one gutter width, so stacked time axes line up. Changes too close together to draw show as a gray block with their count, and zooming in resolves them.
-- **Colors.** A bus lane colors each value by a hash of its text, so the same value has the same color in every lane, graph and session. The legend shows the value at the cursor with its color. Logic lanes use the series color.
+- **Colors.** A hash of each value's text picks two of 24 colors: eight hue families near the page's own palette, each in three pastel tints that keep black text readable. The second color always has a different hue. A value takes its first color unless another value in the same lane already has that hue; then it takes its second. So a value usually keeps its color across lanes, graphs and sessions, while values in the same lane mostly get different hues. The legend shows the value at the cursor with its color. Logic lanes use the series color.
 - **Measuring.** Markers placed within 5 px of a change over a lane snap to it. A second table lists each lane's value at A and at B, the changes between them, the distinct values, and the value held longest with its share of the interval. Counts that include summarized history are marked `≥`.
 
 ### Graph values
@@ -429,4 +429,4 @@ Publishing a GitHub Release attaches the same six files to it; pushing a tag alo
 
 ## Validation
 
-[VALIDATION.md](VALIDATION.md) records the test environment, numerical checks against reference statistics, live-run results, distribution sizes and the SHA-256 hashes of the tested build. The script and stylesheet total 20,699 bytes gzipped.
+[VALIDATION.md](VALIDATION.md) records the test environment, numerical checks against reference statistics, live-run results, distribution sizes and the SHA-256 hashes of the tested build. The script and stylesheet total 20,909 bytes gzipped.

@@ -104,10 +104,10 @@ class DemoTests(unittest.TestCase):
                 with zipfile.ZipFile(archive.value.path()) as z:
                     self.assertIsNone(z.testzip())
                     self.assertEqual(z.namelist(), ["export.txt", "raw-events.csv", "s01-Inlet-temperature.csv", "s02-Outlet-temperature.csv",
-                                                    "s03-Pump.csv", "s04-Status.csv", "s05-Motor-speed.csv", "s06-Controller.csv", "s07-Supply-voltage.csv"])
+                                                    "s03-Pump.csv", "s04-Motor-speed.csv", "s05-Controller.csv", "s06-Supply-voltage.csv", "s07-Status.csv"])
                     self.assertIn("diagnostic", z.read("raw-events.csv").decode("utf-8"))
                     # Lane files list the values held; the controller lane starts in one of its four states.
-                    controller = list(csv.DictReader(io.StringIO(z.read("s06-Controller.csv").decode("utf-8"))))
+                    controller = list(csv.DictReader(io.StringIO(z.read("s05-Controller.csv").decode("utf-8"))))
                     self.assertIn(controller[0]["value"], ("IDLE", "RAMP UP", "RUN", "RAMP DOWN"))
                     self.assertIn("lane", z.read("export.txt").decode("utf-8"))
                 expect(page.locator(".turbo-sse-uptime")).to_contain_text("Uptime ≈")

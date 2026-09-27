@@ -4,7 +4,7 @@ Python 3.9.6 and Playwright 1.55.0 on macOS 27.0 (arm64, Apple M4 Pro). Browser 
 
 **Behavior and visual checks**
 
-The complete suite passes **191 tests**. Coverage includes existing SSE/raw/JSON/transform/log/reconnect behavior, explicit raw omission, numeric uptime, restart inference, shared series, numerical compaction, CSV snapshot consistency, raw/series downloads, the single export path (every export button downloads one ZIP with export.txt and valid CRCs, including single-file and graph-free exports, and reports failures next to Export All), extreme finite values, lifecycle cleanup, touch/keyboard inspection, synchronized plots, and resizing selected off-screen panels without horizontal overflow. Plot interaction tests cover click-to-activate, the Live state and one-time Fit, the zoom and measurement bands, A/B marker labels, markers stopping Live, measuring without moving the page layout, toolbar focus, shortcuts after clicks outside the canvas, selectable readout/legend/measurement text, the reserved control band, the cut-off key legend that fades and shows in full on hover, generated headers, and discrete lanes: change-only storage, bus and logic values, hashed colors, snapping, lane measurements, lane exports and the lane-only graph.
+The complete suite passes **194 tests**. Coverage includes existing SSE/raw/JSON/transform/log/reconnect behavior, explicit raw omission, numeric uptime, restart inference, shared series, numerical compaction, CSV snapshot consistency, raw/series downloads, the single export path (every export button downloads one ZIP with export.txt and valid CRCs, including single-file and graph-free exports, and reports failures next to Export All), extreme finite values, lifecycle cleanup, touch/keyboard inspection, synchronized plots, and resizing selected off-screen panels without horizontal overflow. Plot interaction tests cover click-to-activate, the Live state and one-time Fit, the zoom and measurement bands, A/B marker labels, markers stopping Live, measuring without moving the page layout, toolbar focus, shortcuts after clicks outside the canvas, selectable readout/legend/measurement text, the reserved control band, the cut-off key legend that fades and shows in full on hover, generated headers, and discrete lanes: change-only storage, bus and logic values, hashed colors with a hue-aware second choice, snapping, lane measurements, lane exports and the lane-only graph.
 
 History tests compare counts, means, population variance/deviation, extrema and their timestamps against independent reference calculations. They cover gaps, duplicate times, small budgets, many restarts, stable snapshots, and values near 1e308 and 1e-300. Busy channels can use otherwise idle channels' capacity without premature compaction.
 
@@ -16,9 +16,9 @@ The build is deterministic and `tools/build.py --check` passes. C99 and C++11 te
 
 | Asset | Minified bytes | Gzip bytes |
 | --- | ---: | ---: |
-| JavaScript | 56,421 | 18,920 |
+| JavaScript | 56,861 | 19,130 |
 | CSS | 5,886 | 1,779 |
-| Combined | 62,307 | **20,699** |
+| Combined | 62,747 | **20,909** |
 
 The full implementation exceeds the soft **8 KiB gzip target**. The regression ceiling is **22 KiB**; it was raised from 16 KiB for the generated plot headers, the plot interaction controls, the classless page styles and discrete lanes. This is a disclosed size tradeoff for bounded indexed history, inspection controls and consistent multi-file exports; it is not presented as meeting the original target.
 
@@ -31,7 +31,7 @@ Ingestion and reference calculation took **1.68 seconds**. Peak accounted histor
 **Live runs and their scope**
 
 - [Final JavaScript release check](benchmarks/graph-release-15s.json): real SSE, four panels/eight channels, 100 groups/second for 15 seconds, with two complete snapshot exports, each downloaded as one ZIP holding export.txt and nine CSV files. All 1,515 messages arrived; every series retained 1,500 valid measurements; no errors. It was rerun after the plot interaction and header rework, and this report's JavaScript hash matches the shipped build.
-- That release check averaged **27.1 canvas draws per configured panel per second**. Cursor-handler p95 was **0.400 ms**; event-to-next-animation-frame p95 was **17.10 ms**. Render-callback p95 was **3.10 ms**.
+- That release check averaged **25.8 canvas draws per configured panel per second**. Cursor-handler p95 was **0.600 ms**; event-to-next-animation-frame p95 was **17.60 ms**. Render-callback p95 was **2.90 ms**.
 - [High-rate check](benchmarks/graph-final-20s.json): the preceding layout build received all 20,020 messages / 160,000 measurement values in 20 seconds at 1,000 groups/second. A 1 MiB graph budget forced compaction, with two nine-file export preparations and no errors. The later change formatted large/small display numbers in scientific notation.
 - [Completed ten-minute soak](benchmarks/graph-soak-10m.json): an earlier hardened build received all 75,600 messages / 600,000 measurement values at 125 groups/second, under an 8 MiB graph budget, with four nine-file export preparations and no errors. Its tested hash is recorded; it predates shared idle-capacity borrowing and the last layout refinements.
 - [Thirty-minute live observations](benchmarks/graph-live-30m-observations.json): the first 30 minutes of the earlier long run, recorded before later numerical/layout refinements. The user requested a 30-minute limit, so the longer process was interrupted and no final end-of-run assertion/timing summary is claimed for it. This file is explicitly observation-only evidence, not a final-build pass.
@@ -41,6 +41,6 @@ Callback timings exclude browser paint and include lightweight animation callbac
 **Final asset SHA-256**
 
 ```text
-1281b768fbe11e0c92b6555be183dd88b83e838512c43ab9e28fb03b5e56ec77  dist/turbo-sse.min.js
+79c16795bb2faf764de869fb4ae47cf38dbe31788424bb284e487eb34014dd68  dist/turbo-sse.min.js
 1211aea5160734446176d830bbacc865eff0e6d7e30bbb84aae2be509628c35d  dist/turbo-sse.css
 ```
