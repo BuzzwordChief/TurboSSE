@@ -43,16 +43,20 @@ class DemoTests(unittest.TestCase):
             try:
                 page.goto(self.url)
                 expect(page.locator(".turbo-sse-status")).to_have_text("Connected")
-                expect(page.locator('[data-sse-event="temperature"]')).to_contain_text("°C")
-                expect(page.locator('[data-sse-json="/voltage"]')).to_contain_text("mV")
-                expect(page.locator('[data-sse-event="status"]')).to_have_text("Running")
+                expect(page.locator('#temperature-value')).to_contain_text("°C")
+                expect(page.locator('#voltage-value')).to_contain_text("mV")
+                expect(page.locator('#device-state')).to_have_text("Running")
                 page.wait_for_function("TurboSSE.stats().retained >= 6")
                 expect(page.locator(".turbo-sse-counts")).not_to_contain_text("Captured: 0")
                 output = ROOT / "test-results"
                 output.mkdir(exist_ok=True)
                 page.screenshot(path=str(output / "demo.png"), full_page=True)
+                page.locator(".turbo-sse-export").click()
+                page.wait_for_function('document.querySelector(".turbo-sse-export-panel").dataset.state === "ready"')
+                self.assertEqual(page.locator(".turbo-sse-export-panel a").count(), 5)
+                expect(page.locator(".turbo-sse-uptime")).to_contain_text("Uptime ≈")
                 with page.expect_download() as download:
-                    page.locator(".turbo-sse-export").click()
+                    page.locator('a[download$="-raw-events.csv"]').click()
                 self.assertIn("diagnostic", Path(download.value.path()).read_text(encoding="utf-8"))
                 self.assertEqual(errors, [])
             finally:

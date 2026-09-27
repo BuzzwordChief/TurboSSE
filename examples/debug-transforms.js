@@ -7,3 +7,8 @@ window.celsius_to_degree = function (value) {
 window.volts_to_millivolts = function (value) {
   return `${Math.round(value * 1000)} mV`;
 };
+
+// Graphs keep numeric values; presentation transforms above return text.
+window.numeric_millivolts = function (value) {
+  return Number(value) * 1000;
+};

@@ -3,25 +3,52 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>TurboSSE · Device debug</title>
+  <title>TurboSSE · Measurement bench</title>
   <link rel="stylesheet" href="/turbo-sse.css">
   <link rel="stylesheet" href="/demo.css">
   <script defer src="/debug-transforms.js"></script>
   <script defer src="/turbo-sse.min.js"></script>
 </head>
-<body data-sse-connect="/events" data-sse-events="diagnostic" data-sse-timeout="30000">
+<!-- Raw events are captured by default. To omit selected payloads only,
+     add data-sse-omit-raw="temperature telemetry" to this root. -->
+<body data-sse-connect="/events" data-sse-events="diagnostic" data-sse-timeout="30000"
+      data-sse-uptime-event="uptime" data-sse-graph-bytes="1048576">
   <main>
-    <header><p class="eyebrow">TURBOSSE / DEVICE 01</p><h1>Device debug</h1>
-      <p>Live measurements and logs from the Python device simulator.</p></header>
+    <header class="page-header">
+      <p class="eyebrow">TURBOSSE / DEVICE 01</p>
+      <h1>Measurement bench</h1>
+      <p>Live thermal response, motor speed, and supply voltage.</p>
+    </header>
     <div class="metrics">
-      <section><h2>Temperature</h2><p class="value" data-sse-event="temperature" data-sse-transform="celsius_to_degree">—</p><small>Raw value · user transform</small></section>
-      <section><h2>Motor speed</h2><p class="value"><span data-sse-event="telemetry" data-sse-json="/rpm">—</span> <small>RPM</small></p><small>JSON telemetry</small></section>
-      <section><h2>Supply voltage</h2><p class="value" data-sse-event="telemetry" data-sse-json="/voltage" data-sse-transform="volts_to_millivolts">—</p><small>JSON value · user transform</small></section>
+      <section><h2>Inlet temperature</h2><p class="value" id="temperature-value" data-sse-event="temperature" data-sse-transform="celsius_to_degree">—</p></section>
+      <section><h2>Motor speed</h2><p class="value"><span id="rpm-value" data-sse-event="telemetry" data-sse-json="/rpm">—</span> <small>rpm</small></p></section>
+      <section><h2>Supply voltage</h2><p class="value" id="voltage-value" data-sse-event="telemetry" data-sse-json="/voltage" data-sse-transform="volts_to_millivolts">—</p></section>
     </div>
-    <section><h2>Device state</h2><div data-sse-event="status" data-sse-format="html">Waiting for device…</div></section>
-    <section><h2>Latest telemetry payload</h2><pre data-sse-event="telemetry">Waiting for telemetry…</pre></section>
-    <section><h2>Device log</h2><pre class="log" data-sse-event="log" data-sse-swap="append" data-sse-limit="500"></pre></section>
-    <p class="footnote">CSV includes original payloads and diagnostic events. The log keeps the latest 500 entries.</p>
+    <p class="instructions">Drag to zoom. Choose <strong>Measure</strong> to compare an interval. <strong>Live</strong> returns to incoming data. The plots share their time window and cursors.</p>
+    <section class="graph-card">
+      <header><h2>Thermal response</h2><span>Inlet / outlet · °C</span></header>
+      <div id="thermal-plot" data-sse-graph data-sse-sync="bench" data-sse-window="60">
+        <span data-sse-event="temperature" data-sse-label="Inlet temperature" data-sse-unit="°C">—</span>
+        <span data-sse-event="telemetry" data-sse-json="/outlet" data-sse-label="Outlet temperature" data-sse-unit="°C">—</span>
+      </div>
+    </section>
+    <section class="graph-card">
+      <header><h2>Motor speed</h2><span>rpm</span></header>
+      <div id="speed-plot" data-sse-graph data-sse-sync="bench" data-sse-event="telemetry"
+           data-sse-json="/rpm" data-sse-label="Motor speed" data-sse-unit="rpm"></div>
+    </section>
+    <section class="graph-card">
+      <header><h2>Supply voltage</h2><span>mV</span></header>
+      <div id="voltage-plot" data-sse-graph data-sse-sync="bench" data-sse-event="telemetry"
+           data-sse-json="/voltage" data-sse-transform="numeric_millivolts" data-sse-label="Supply voltage" data-sse-unit="mV"></div>
+    </section>
+    <details class="diagnostics">
+      <summary>Device state, original payloads &amp; log</summary>
+      <section><h2>Device state</h2><div id="device-state" data-sse-event="status" data-sse-format="html">Waiting for device…</div></section>
+      <section><h2>Latest telemetry payload</h2><pre data-sse-event="telemetry">Waiting for telemetry…</pre></section>
+      <section><h2>Device log</h2><pre class="log" data-sse-event="log" data-sse-swap="append" data-sse-limit="500"></pre></section>
+    </details>
+    <p class="footnote">Export CSV provides original retained events and a separate file for each series. Older graph history is summarized when its memory budget fills; extrema and statistics remain available. Uptime and restart markers are estimates.</p>
   </main>
 </body>
 </html>

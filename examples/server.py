@@ -43,11 +43,13 @@ def encode_event(data, event=None, event_id=None):
 class DeviceServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address, rate=5.0, disconnect_every=0.0, stall_after=0.0):
+    def __init__(self, address, rate=5.0, disconnect_every=0.0, stall_after=0.0, restart_every=0.0):
         super().__init__(address, Handler)
         self.rate = rate
         self.disconnect_every = disconnect_every
         self.stall_after = stall_after
+        self.restart_every = restart_every
+        self.boot_started = time.monotonic()
         self.boot = uuid.uuid4().hex[:8]
         self.sequence = 0
         self.lock = threading.Lock()
@@ -57,6 +59,19 @@ class DeviceServer(ThreadingHTTPServer):
         with self.lock:
             self.sequence += 1
             return self.boot + ":" + str(self.sequence)
+
+    def restart(self):
+        with self.lock:
+            self.boot_started = time.monotonic()
+            self.boot = uuid.uuid4().hex[:8]
+            self.sequence = 0
+
+    def uptime(self):
+        value = time.monotonic() - self.boot_started
+        if self.restart_every and value >= self.restart_every:
+            self.restart()
+            return 0.0
+        return value
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -95,6 +110,7 @@ class Handler(BaseHTTPRequestHandler):
         resume = self.headers.get("Last-Event-ID", query.get("lastEventId", [""])[0])
         started = time.monotonic()
         tick = 0
+        connected_boot = device.boot
 
         def send(name, data):
             self.wfile.write(encode_event(data, name, device.next_id()))
@@ -104,17 +120,23 @@ class Handler(BaseHTTPRequestHandler):
             send("log", "Connected; refreshing snapshot" + (" after " + resume if resume else "") + "\n")
             while not device.stopped.is_set():
                 elapsed = time.monotonic() - started
+                uptime = device.uptime()
+                if device.boot != connected_boot:
+                    return
                 if device.disconnect_every and elapsed >= device.disconnect_every:
                     return
                 if device.stall_after and elapsed >= device.stall_after:
                     device.stopped.wait(0.1)
                     continue
-                temperature = 23.6 + 2 * math.sin(time.monotonic() / 8)
+                if tick % max(1, round(device.rate)) == 0:
+                    send("uptime", "{:.3f}".format(uptime))
+                temperature = 23.6 + 2 * math.sin(uptime / 8)
                 send("temperature", "{:.2f}".format(temperature))
-                send("telemetry", json.dumps({"rpm": int(1450 + 60 * math.sin(elapsed)), "voltage": round(12.4 + .1 * math.cos(elapsed), 2)}, separators=(",", ":")))
+                send("telemetry", json.dumps({"outlet": round(22.8 + 1.6 * math.sin((uptime - 2) / 8), 2),
+                    "rpm": int(1450 + 60 * math.sin(uptime / 2)), "voltage": round(12.4 + .1 * math.cos(uptime / 4), 3)}, separators=(",", ":")))
                 if tick % 5 == 0:
                     send("log", "sample {}: temperature {:.2f} °C\n".format(tick, temperature))
-                    send("diagnostic", "uptime={:.1f}s free_heap=32768".format(elapsed))
+                    send("diagnostic", "uptime={:.1f}s free_heap=32768".format(uptime))
                     send("status", "<strong>Running</strong>")
                 send("heartbeat", "alive")
                 self.wfile.flush()
@@ -131,13 +153,14 @@ def main():
     parser.add_argument("--rate", type=float, default=5, help="Sample groups per second (0.1–1000)")
     parser.add_argument("--disconnect-every", type=float, default=0, metavar="SECONDS")
     parser.add_argument("--stall-after", type=float, default=0, metavar="SECONDS")
+    parser.add_argument("--restart-every", type=float, default=0, metavar="SECONDS", help="Restart the simulated device and its uptime clock periodically")
     args = parser.parse_args()
     if not math.isfinite(args.rate) or not .1 <= args.rate <= 1000:
         parser.error("--rate must be between 0.1 and 1000")
-    for value in (args.disconnect_every, args.stall_after):
+    for value in (args.disconnect_every, args.stall_after, args.restart_every):
         if not math.isfinite(value) or value < 0:
             parser.error("Fault durations must be finite and nonnegative")
-    server = DeviceServer((args.host, args.port), args.rate, args.disconnect_every, args.stall_after)
+    server = DeviceServer((args.host, args.port), args.rate, args.disconnect_every, args.stall_after, args.restart_every)
     print("Device demo: http://{}:{}".format(args.host, server.server_port), flush=True)
     try:
         server.serve_forever()

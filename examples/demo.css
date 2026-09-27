@@ -1,13 +1,33 @@
 * { box-sizing: border-box; }
-body { margin: 0; background: #f7f9fb; color: #182330; font: 16px/1.5 system-ui, sans-serif; }
-main { max-width: 1000px; margin: 2.5rem auto; padding: 0 1.25rem; }
-header { margin-bottom: 2rem; }
-h1 { font-size: 2.25rem; letter-spacing: -.04em; margin: .25rem 0; }
-h2 { font-size: .95rem; margin: 0 0 1rem; color: #526376; }
-.eyebrow { font-size: .75rem; font-weight: 700; letter-spacing: .12em; color: #1769bd; }
-.metrics { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 1rem; }
-section { border: 1px solid #dce3ea; border-radius: 8px; background: white; padding: 1.25rem; margin-bottom: 1rem; }
-.value { font-size: 2rem; font-variant-numeric: tabular-nums; margin: 0 0 .5rem; }
-small,.footnote { color: #526376; font-size: .8rem; }
-pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; font: 13px/1.65 ui-monospace,monospace; }
-.log { max-height: 260px; overflow-y: auto; }
+body { margin: 0; background: #f2f5f7; color: #203344; font: 15px/1.5 system-ui,sans-serif; --turbo-sse-height: 220px; }
+main { max-width: 1140px; margin: 2.25rem auto; padding: 0 1.5rem 2rem; }
+.page-header { margin-bottom: 1.5rem; }
+.page-header > p:last-child { margin: .4rem 0; color: #526779; }
+h1 { font-size: 2rem; font-weight: 650; letter-spacing: -.025em; margin: .25rem 0; }
+h2 { font-size: .9rem; font-weight: 600; margin: 0; }
+.eyebrow { font-size: .7rem; font-weight: 700; letter-spacing: .1em; color: #386282; margin: 0; }
+.metrics { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 1rem; }
+.metrics > section { padding: 1rem 1.2rem; background: #fff; border: 1px solid #cad3dc; border-radius: 4px; }
+.metrics h2 { color: #526779; }
+.value { margin: .4rem 0 0; font-size: 1.85rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+.value small { font-size: 1rem; color: #526779; }
+.instructions { margin: 1.3rem 0; color: #526779; font-size: .85rem; }
+.instructions strong { font-weight: 600; }
+.graph-card { margin: 1.3rem 0; }
+.graph-card > header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: .5rem; }
+.graph-card > header > span { color: #627789; font-size: .75rem; }
+.diagnostics { border-top: 1px solid #cad3dc; margin-top: 1.75rem; padding-top: .8rem; }
+.diagnostics summary { cursor: pointer; font-weight: 600; }
+.diagnostics > section { padding: 1rem; margin-top: .75rem; background: #fff; border: 1px solid #dce3ea; border-radius: 4px; }
+.diagnostics h2 { color: #526779; margin-bottom: .5rem; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; font: 12px/1.6 ui-monospace,monospace; }
+.log { max-height: 240px; overflow-y: auto; }
+.footnote { color: #627789; font-size: .78rem; line-height: 1.7; margin-top: 1.2rem; }
+@media (max-width: 600px) {
+  main { padding: 0 .75rem 1rem; margin-top: 1.25rem; }
+  .metrics { gap: .5rem; }
+  .metrics > section { padding: .7rem; }
+  .metrics h2 { font-size: .73rem; }
+  .value { font-size: 1.15rem; }
+  h1 { font-size: 1.7rem; }
+}
