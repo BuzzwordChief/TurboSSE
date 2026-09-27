@@ -4,7 +4,7 @@ A standalone JavaScript library for embedded-device debug pages. Bind SSE events
 
 Build the runtime into `dist/turbo-sse.min.js` and `dist/turbo-sse.css`, or download the GitHub Actions artifact. Copy both files onto your device. No Node.js, bundler, CDN, or Python is needed on the device. Readable sources are in `src/`; Python 3.9 is used for the example server, build tooling, and tests. Generated `dist/` files are ignored by Git.
 
-The shipped JavaScript and CSS total **15,583 bytes gzip** (15.2 KiB). This exceeds the soft 8 KiB target; the complete graphing/inspection/export implementation has a 16 KiB regression ceiling. Chromium, Firefox, and WebKit tests cover the runtime and downloads. See [VALIDATION.md](VALIDATION.md) for numerical simulations, live-run results, tested hashes, and their scope.
+The shipped JavaScript and CSS total **16,364 bytes gzip** (16.0 KiB). This exceeds the soft 8 KiB target; the complete graphing/inspection/export implementation has a 16 KiB regression ceiling, with 20 bytes to spare. Chromium, Firefox, and WebKit tests cover the runtime and downloads. See [VALIDATION.md](VALIDATION.md) for numerical simulations, live-run results, tested hashes, and their scope.
 
 **Run the example**
 
@@ -113,9 +113,12 @@ A container without its own event binding can overlay several series. Matching s
 
 Keep one unit per panel; use stacked panels for different quantities. The first panel in a sync group sets its Live window. Graphs fill their container; set `--turbo-sse-height: 220px` in CSS to change the plot-area height. `data-sse-y-min` and `data-sse-y-max` optionally fix the y range. Graphs own generated controls/canvas/legend DOM and temporarily hide their source spans; destruction restores those spans. The source elements themselves remain intact.
 
-- Drag in **Zoom** mode to select a time range; Shift-drag also zooms y. In **Pan** mode, drag to move the time window.
-- Click/focus a canvas before wheel zooming. Left/right arrows pan, `+`/`-` zoom, `L` follows Live, and `F` fits retained history.
-- **Measure** supports dragging or two taps to set A/B. Keyboard `A` and `B` set them at the cursor, or the view center; Escape clears/cancels. Readouts include delta time/value, slope, count, extrema, peak-to-peak, mean, RMS and population standard deviation.
+Hovering shows a crosshair; the readout row lists the elapsed time, the y value under the pointer, and the nearest sample. Legend entries toggle a series (Shift-click isolates one); a hidden series keeps an outlined swatch so it is still listed.
+
+- A plot is inactive until you click it or move keyboard focus into it. Hovering an inactive plot shows "Click to interact", and the wheel scrolls the page as usual. The first click only activates the plot; clicking elsewhere or tabbing away deactivates it. On touch screens an inactive plot lets the page scroll, and the first tap activates it.
+- Drag to pan and use the wheel to zoom around the pointer. While **Live** is checked, the wheel only changes the followed window, so zooming in or out keeps tracking incoming data; panning or selecting a range unchecks Live. Checking Live again keeps the current span and moves it to the newest data. **Fit** shows all retained history; while Live is checked it keeps showing all of it as data arrives. Right-drag selects a time range to zoom into; Shift with right-drag also zooms y.
+- Shift-drag measures an interval. On touch screens, drag pans and two taps set A/B. Keyboard `A` and `B` set them at the cursor, or the view center; Escape clears/cancels. Readouts include delta time/value, slope, count, extrema, peak-to-peak, mean, RMS and population standard deviation.
+- Left/right arrows pan, `+`/`-` zoom, `L` toggles Live, and `F` fits retained history. The Live checkbox, the Fit, Fit Y, Back, and Export view buttons, and a key legend for the pointer and keyboard controls appear in a band above the plot while it is active; Live and Fit show their `L` and `F` keys. The band is reserved, so the controls never cover data. Touch screens show only the buttons.
 - Click a legend entry to hide/show it; Shift-click isolates it. Acquisition continues for hidden series. **Fit Y** restores y auto-ranging and **Back** restores an earlier time window.
 - **Export view** downloads the selected plot's series for the visible or A/B interval. The toolbar's **Export CSV** offers all retained data.
 
@@ -194,7 +197,11 @@ After reconnect, only the first valid report is compared with the last **reporte
 
 **Connection status and history**
 
-The topbar displays text and color: Connecting/Reconnecting in amber, Connected in green, and Stalled/Disconnected in red. Its status region announces state changes, while counters update at most once per second. Export CSV and Retry are keyboard-accessible buttons.
+The topbar displays text and a colored marker: Connecting/Reconnecting in amber, Connected in green, and Stalled/Disconnected in red. Its status region announces state changes, while counters update at most once per second. Export CSV and Retry are keyboard-accessible buttons.
+
+**Styling**
+
+`turbo-sse.css` is deliberately small and follows the look of the HAProxy status page: 12 px Arial, black on white, 1 px gray rules, beige bands for the topbar and legend, tinted connection states (green, amber, red), and a yellow key legend. Numbers use tabular figures. Only generated class names starting with `turbo-sse-` are styled, so an application stylesheet can override any rule. The canvas takes its axis, tick, and grid color from the computed `color` of `.turbo-sse-area`, so restyling the plot does not require editing the script. Series colors come from a fixed six-color palette in the script and are exposed to the legend as `--series-color`.
 
 Normal transient failures use the existing native `EventSource` reconnect behavior and the server's `retry:` interval. Terminal closure, including HTTP 204, shows Disconnected and a manual Retry button; the browser does not expose the specific HTTP status to the library.
 

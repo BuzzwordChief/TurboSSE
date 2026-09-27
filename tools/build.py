@@ -37,8 +37,10 @@ def c_header(contents, compressed=False):
 def build(check=False):
     javascript = (ROOT / "src/turbo-sse.js").read_text(encoding="utf-8")
     css = (ROOT / "src/turbo-sse.css").read_text(encoding="utf-8")
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
     css = re.sub(r"\s+", " ", css)
-    css = re.sub(r"\s*([{}:;,])\s*", r"\1", css).strip()
+    css = re.sub(r"\s*([{};,])\s*", r"\1", css)
+    css = re.sub(r":\s+", ":", css).strip()  # Keep the space before ":focus-visible" in descendant selectors.
     outputs = {
         "turbo-sse.min.js": rjsmin.jsmin(javascript).encode("utf-8"),
         "turbo-sse.css": css.encode("utf-8"),

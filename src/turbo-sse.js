@@ -282,7 +282,7 @@
     }
   }
 
-  const palette = ["#235d9c", "#b04a25", "#247766", "#8051a1", "#9a7017", "#3c7180"];
+  const palette = ["#005996", "#b00040", "#208020", "#6020a0", "#c07820", "#20a0a0"];
   const format = value => {
     if (!Number.isFinite(value)) return "—";
     const magnitude = Math.abs(value);
@@ -316,24 +316,30 @@
       this.host = host; this.sources = sources; this.view = view; this.hooks = hooks;
       this.min = option(host, "y-min", null); this.max = option(host, "y-max", null);
       if (this.min !== null && this.max !== null && this.min >= this.max) throw new Error("Graph y-min must be below y-max");
-      this.hidden = new Set(); this.y = null; this.mode = "Zoom"; this.drag = null;
+      this.hidden = new Set(); this.y = null; this.mode = "Pan"; this.drag = null; this.top = 24; this.width = this.height = 1;
       this.abort = new AbortController();
       const listen = (node, name, fn, opts = {}) => node.addEventListener(name, fn, {...opts, signal: this.abort.signal});
       this.element = make("section", "turbo-sse-plot", undefined, host);
       this.element.setAttribute("aria-label", attr(host, "label") || sources.map(c => c.label).join(", "));
       this.controls = make("div", "turbo-sse-tools", undefined, this.element);
-      for (const action of ["Live", "Fit", "Fit Y", "Back", "Export view"]) {
-        const b = make("button", "", action, this.controls); b.type = "button"; b.dataset.action = action;
+      const hint = make("div", "turbo-sse-hint", undefined, this.controls);
+      for (const [keys, text] of [["Drag|←|→", "pan"], ["Wheel|+|−", "zoom"], ["Right-drag", "zoom range"], ["Shift|Drag", "measure"], ["A|B", "markers"], ["Esc", "clear"]]) {
+        const item = make("span", "", undefined, hint);
+        keys.split("|").forEach((key, i) => { if (i) item.append(keys[0] == "S" ? "+" : " "); make("kbd", "", key, item); });
+        item.append(" " + text);
       }
-      this.modeControl = make("select", "", undefined, this.controls);
-      this.modeControl.setAttribute("aria-label", "Plot interaction");
-      for (const text of ["Zoom", "Pan", "Measure"]) make("option", "", text, this.modeControl);
-      listen(this.modeControl, "change", () => { this.mode = this.modeControl.value; });
+      const live = make("label", "", undefined, this.controls);
+      this.liveBox = make("input", "", undefined, live); this.liveBox.type = "checkbox"; this.liveBox.dataset.action = "Live"; live.append("Live"); make("kbd", "", "L", live);
+      listen(this.liveBox, "change", () => this.live(this.liveBox.checked));
+      for (const action of ["Fit", "Fit Y", "Back", "Export view"]) {
+        const b = make("button", "", action, this.controls); b.type = "button"; b.dataset.action = action;
+        if (action == "Fit") make("kbd", "", "F", b);
+      }
       this.area = make("div", "turbo-sse-area", undefined, this.element);
       this.canvas = make("canvas", "", undefined, this.area);
       this.canvas.tabIndex = 0;
       this.canvas.setAttribute("role", "img");
-      this.canvas.setAttribute("aria-label", this.element.getAttribute("aria-label") + ". Arrows pan; plus/minus zoom; A/B measure; L live; F fit.");
+      this.canvas.setAttribute("aria-label", this.element.getAttribute("aria-label") + ". Click to interact. " + [...hint.children].map(e => e.textContent).join("; ") + "; L live; F fit.");
       this.cursor = make("div", "turbo-sse-cursor", undefined, this.area);
       this.horizontal = make("div", "turbo-sse-cross-y", undefined, this.area);
       this.selection = make("div", "turbo-sse-selection", undefined, this.area);
@@ -357,52 +363,54 @@
       this.measure = make("div", "turbo-sse-measure", undefined, this.element);
       listen(this.controls, "click", event => {
         const action = event.target.dataset.action;
-        if (action === "Live") { this.save(); view.live = true; }
-        if (action === "Fit") { this.save(); const r = hooks.extent(view); view.lo = r[0]; view.hi = Math.max(r[1], r[0] + .001); view.live = false; }
+        if (action === "Fit") { this.save(); const r = hooks.extent(view); if (view.live) view.window = Infinity; else { view.lo = r[0]; view.hi = Math.max(r[1], r[0] + .001); } }
         if (action === "Fit Y") this.y = null;
         if (action === "Back" && view.history.length) Object.assign(view, view.history.pop());
         if (action === "Export view") hooks.export(sources, view.a !== null && view.b !== null ? [Math.min(view.a, view.b), Math.max(view.a, view.b)] : [view.lo, view.hi]);
         hooks.invalidate();
       });
+      listen(this.canvas, "contextmenu", event => event.preventDefault());
       listen(this.canvas, "wheel", event => {
-        if (document.activeElement !== this.canvas) return;
+        if (!this.element.hasAttribute("data-active")) return;
         event.preventDefault();
-        const t = this.time(event), factor = Math.exp(Math.max(-1, Math.min(1, event.deltaY / 300)));
-        this.setRange(t + (view.lo - t) * factor, t + (view.hi - t) * factor);
+        this.zoom(this.time(event), Math.exp(Math.max(-1, Math.min(1, event.deltaY / 300))));
       }, {passive: false});
       listen(this.canvas, "pointerdown", event => {
-        if (this.drag || event.button !== 0) return;
-        event.preventDefault(); this.canvas.focus(); this.canvas.setPointerCapture(event.pointerId);
+        if (this.drag || (event.button !== 0 && event.button !== 2)) return;
+        event.preventDefault();
+        if (!this.activate()) return this.canvas.focus();
+        this.canvas.focus(); this.canvas.setPointerCapture(event.pointerId);
         const t = this.time(event);
-        this.drag = {x: event.clientX, y: event.clientY, t, lo: view.lo, hi: view.hi, live: view.live, a: view.a, b: view.b, fresh: view.a === null || view.b !== null};
+        this.mode = event.button === 2 ? "Zoom" : event.shiftKey ? "Measure" : "Pan";
+        this.drag = {x: event.clientX, y: event.clientY, t, end: t, lo: view.lo, hi: view.hi, live: view.live, a: view.a, b: view.b, fresh: view.a === null || view.b !== null};
         this.save(); view.live = false; hooks.invalidate();
         if (this.mode === "Measure") { if (this.drag.fresh) view.a = t; view.b = null; }
       });
       listen(this.canvas, "pointermove", event => {
         const t = this.time(event); view.cursor = t;
-        this.cursorY = Math.max(12, Math.min(12 + this.height, event.clientY - this.canvas.getBoundingClientRect().top));
+        this.cursorY = Math.max(this.top, Math.min(this.top + this.height, event.clientY - this.canvas.getBoundingClientRect().top));
         if (this.drag) {
           const d = this.drag;
           if (this.mode === "Pan") {
             const shift = (event.clientX - d.x) * (d.hi - d.lo) / this.width;
             this.setRange(d.lo - shift, d.hi - shift, false);
           } else if (this.mode === "Measure") { view.b = t; hooks.invalidate(); }
-          else this.band(d.t, t);
+          else { d.end = t; this.band(t, d.t); }
         }
         hooks.cursor(view);
       });
       listen(this.canvas, "pointerup", event => {
         if (!this.drag) return;
-        const d = this.drag, t = this.time(event); this.drag = null;
-        if (this.mode === "Zoom" && Math.abs(event.clientX - d.x) > 3) {
+        const d = this.drag, t = this.time(event), moved = Math.abs(event.clientX - d.x) > 3; this.drag = null;
+        if (this.mode === "Measure") view.b = d.fresh && !moved ? null : t;
+        else if (this.mode === "Zoom" && moved) {
           if (event.shiftKey && Math.abs(event.clientY - d.y) > 3) {
             const rect = this.canvas.getBoundingClientRect();
             this.y = [this.value(Math.max(d.y, event.clientY) - rect.top), this.value(Math.min(d.y, event.clientY) - rect.top)];
           }
           this.setRange(Math.min(d.t, t), Math.max(d.t, t), false);
-        } else if (this.mode === "Measure") {
-          view.b = d.fresh && Math.abs(event.clientX - d.x) < 3 ? null : t;
-        }
+        } else if (!moved && event.pointerType === "touch") { if (d.fresh) { view.a = t; view.b = null; } else view.b = t; }
+        else if (!moved) { Object.assign(view, {lo: d.lo, hi: d.hi, live: d.live}); view.history.pop(); }
         hooks.invalidate();
       });
       listen(this.canvas, "pointercancel", () => { this.cancel(); });
@@ -411,24 +419,45 @@
         const key = event.key.toLowerCase(), span = view.hi - view.lo, center = view.cursor === null ? (view.lo + view.hi) / 2 : view.cursor;
         if (["arrowleft", "arrowright", "+", "=", "-", "a", "b", "l", "f", "escape"].includes(key)) event.preventDefault();
         if (key === "arrowleft" || key === "arrowright") this.setRange(view.lo + span * (key === "arrowleft" ? -.1 : .1), view.hi + span * (key === "arrowleft" ? -.1 : .1));
-        if (["+", "=", "-"].includes(key)) { const f = key === "-" ? 1.25 : .8; this.setRange(center + (view.lo - center) * f, center + (view.hi - center) * f); }
+        if (["+", "=", "-"].includes(key)) this.zoom(center, key === "-" ? 1.25 : .8);
         if (key === "a") view.a = center;
         if (key === "b") view.b = center;
         if (key === "escape") { this.cancel(); view.a = view.b = null; }
-        if (key === "l" || key === "f") this.controls.querySelector('[data-action="' + (key === "l" ? "Live" : "Fit") + '"]').click();
+        if (key === "l") this.live(!view.live);
+        if (key === "f") this.controls.querySelector('[data-action="Fit"]').click();
         hooks.invalidate();
       });
-      this.observer = new ResizeObserver(() => hooks.invalidate());
-      this.observer.observe(this.area);
+      listen(this.element, "focusin", () => this.activate());
+      listen(this.element, "focusout", event => { if (event.relatedTarget && !this.element.contains(event.relatedTarget)) this.activate(false); });
+      listen(document, "pointerdown", event => { if (!this.element.contains(event.target)) this.activate(false); });
+      this.observer = new ResizeObserver(() => { this.top = this.controls.offsetHeight + 6; hooks.invalidate(); });
+      this.observer.observe(this.area); this.observer.observe(this.controls);
+    }
+    activate(on = true) {
+      const was = this.element.hasAttribute("data-active");
+      this.element.toggleAttribute("data-active", on);
+      return was;
     }
     trimHistory() { if (this.view.history.length > 20) this.view.history.shift(); }
-    save() { this.view.history.push({lo: this.view.lo, hi: this.view.hi, live: this.view.live}); this.trimHistory(); }
+    save() { const g = this.view; g.history.push({lo: g.lo, hi: g.hi, live: g.live, window: g.window}); this.trimHistory(); }
     cancel() {
       if (this.drag) {
         const d = this.drag; Object.assign(this.view, {a: d.a, b: d.b, lo: d.lo, hi: d.hi, live: d.live});
         this.view.history.pop(); this.drag = null;
       }
       this.hooks.invalidate();
+    }
+    live(on) {
+      // Following keeps the visible span; the view only moves to the newest data.
+      const g = this.view, span = g.hi - g.lo; this.save();
+      if (on && !g.live && span > 0) g.window = span;
+      g.live = on; this.hooks.invalidate();
+    }
+    zoom(center, factor) {
+      // While live, zooming only changes the followed window; the view keeps tracking incoming data.
+      const g = this.view, span = g.hi - g.lo;
+      if (g.live) { g.window = Math.max(.0001, (factor < 1 ? span : Math.max(span, g.window)) * factor); this.hooks.invalidate(); }
+      else this.setRange(center + (g.lo - center) * factor, center + (g.hi - center) * factor);
     }
     setRange(lo, hi, remember = true) {
       const extent = this.hooks.extent(this.view), span = Math.max(.0001, hi - lo);
@@ -440,7 +469,7 @@
     }
     time(event) { const rect = this.canvas.getBoundingClientRect(); return this.view.lo + Math.max(0, Math.min(this.width, event.clientX - rect.left - 64)) / this.width * (this.view.hi - this.view.lo); }
     x(t) { return 64 + (t - this.view.lo) / (this.view.hi - this.view.lo) * this.width; }
-    value(y) { const f = Math.max(0, Math.min(1, (y - 12) / this.height)); return this.yMax * (1 - f) + this.yMin * f; }
+    value(y) { const f = Math.max(0, Math.min(1, (y - this.top) / this.height)); return this.yMax * (1 - f) + this.yMin * f; }
     band(a, b) {
       this.selection.hidden = a === null;
       if (this.selection.hidden) return;
@@ -448,12 +477,12 @@
       this.selection.hidden = Math.max(a, b) < this.view.lo || Math.min(a, b) > this.view.hi;
       if (this.selection.hidden) return;
       const x = Math.max(64, Math.min(this.x(a), this.x(b))), end = Math.min(64 + this.width, Math.max(this.x(a), this.x(b)));
-      this.selection.style.cssText = `left:${x}px;top:12px;width:${Math.max(0,end-x)}px;height:${this.height}px`;
+      this.selection.style.cssText = `left:${x}px;top:${this.top}px;width:${Math.max(0,end-x)}px;height:${this.height}px`;
     }
     inspect() {
       const g = this.view, t = g.cursor;
       this.cursor.hidden = t === null || t < g.lo || t > g.hi;
-      if (!this.cursor.hidden) this.cursor.style.cssText = `left:${this.x(t)}px;top:12px;height:${this.height}px`;
+      if (!this.cursor.hidden) this.cursor.style.cssText = `left:${this.x(t)}px;top:${this.top}px;height:${this.height}px`;
       this.horizontal.hidden = this.cursor.hidden || this.cursorY == null;
       if (!this.horizontal.hidden) this.horizontal.style.cssText = `left:64px;top:${this.cursorY}px;width:${this.width}px`;
       this.sources.forEach((c, i) => {
@@ -462,14 +491,14 @@
       });
       if (t !== null) {
         const point = this.sources[0].history.nearest(t), a = point && point.a;
-        this.readout.textContent = "Elapsed " + format(t) + " s" + (!a ? "" : point.summary ? ` · summary ${format(a[0])}–${format(a[1])} s` :
+        this.readout.textContent = "Elapsed " + format(t) + " s" + (this.cursorY == null ? "" : " · y " + format(this.value(this.cursorY))) + (!a ? "" : point.summary ? ` · summary ${format(a[0])}–${format(a[1])} s` :
           ` · sample ${format(a[0])} s · uptime ${Number.isFinite(a[2]) ? "≈" + format(a[2]) + " s" : "— (unsynchronized)"}`);
       } else this.readout.textContent = this.baseReadout || "Waiting for data";
     }
     draw() {
       if (!this.host.isConnected || !this.area.clientWidth || !this.area.getClientRects().length) return;
       const w = this.area.clientWidth, h = this.area.clientHeight, dpr = Math.min(3, window.devicePixelRatio || 1), g = this.view;
-      this.width = Math.max(1, w - 80); this.height = Math.max(1, h - 48);
+      this.width = Math.max(1, w - 80); this.height = Math.max(1, h - this.top - 36); const T = this.top;
       if (this.canvas.width !== Math.round(w * dpr) || this.canvas.height !== Math.round(h * dpr)) { this.canvas.width = Math.round(w * dpr); this.canvas.height = Math.round(h * dpr); }
       const ctx = this.canvas.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
       let low = Infinity, high = -Infinity, retained = 0;
@@ -485,14 +514,17 @@
       this.yMax = this.y ? this.y[1] : this.max === null ? Math.min(Number.MAX_VALUE, high + pad) : this.max;
       if (this.yMin >= this.yMax) { this.yMax = Math.min(Number.MAX_VALUE, this.yMin + pad); this.yMin = Math.max(-Number.MAX_VALUE, this.yMin - pad); }
       const scale = Math.max(Math.abs(this.yMin), Math.abs(this.yMax), Number.MIN_VALUE);
-      const y = v => 12 + (this.yMax / scale - v / scale) / (this.yMax / scale - this.yMin / scale) * this.height;
-      ctx.font = "11px system-ui"; ctx.fillStyle = "#344454"; ctx.strokeStyle = "#dce3e9"; ctx.lineWidth = .7;
+      const y = v => T + (this.yMax / scale - v / scale) / (this.yMax / scale - this.yMin / scale) * this.height;
+      const ink = getComputedStyle(this.area).color;
+      ctx.font = "10px arial, helvetica, sans-serif"; ctx.fillStyle = ctx.strokeStyle = ink; ctx.lineWidth = 1;
       ctx.textAlign = "right";
-      for (const v of ticks(this.yMin, this.yMax, 5)) { const p = y(v); ctx.beginPath(); ctx.moveTo(60, p); ctx.lineTo(w - 16, p); ctx.stroke(); ctx.fillText(format(v), 56, p + 4); }
+      const rule = (x0, y0, x1, y1, faint) => { ctx.globalAlpha = faint ? .12 : 1; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); ctx.globalAlpha = 1; };
+      for (const v of ticks(this.yMin, this.yMax, 5)) { const p = Math.round(y(v)) + .5; rule(64, p, w - 16, p, true); rule(60, p, 64, p); ctx.fillText(format(v), 56, p + 4); }
       ctx.textAlign = "center";
-      for (const v of ticks(g.lo, g.hi, Math.max(2, this.width / 90))) { const p = this.x(v); ctx.beginPath(); ctx.moveTo(p, 12); ctx.lineTo(p, h - 36); ctx.stroke(); ctx.fillText(format(v), p, h - 20); }
-      ctx.fillText("Elapsed time (s)", 64 + this.width / 2, h - 4); ctx.textAlign = "left"; ctx.fillText(this.sources[0].unit, 4, 10);
-      ctx.save(); ctx.beginPath(); ctx.rect(64, 12, this.width, this.height); ctx.clip();
+      for (const v of ticks(g.lo, g.hi, Math.max(2, this.width / 90))) { const p = Math.round(this.x(v)) + .5; rule(p, T, p, h - 36, true); rule(p, h - 36, p, h - 32); ctx.fillText(format(v), p, h - 20); }
+      rule(64.5, T, 64.5, h - 35.5); rule(64, h - 35.5, w - 16, h - 35.5);
+      ctx.fillText("Elapsed time (s)", 64 + this.width / 2, h - 4); ctx.textAlign = "left"; ctx.fillText(this.sources[0].unit, 4, T - 4);
+      ctx.save(); ctx.beginPath(); ctx.rect(64, T, this.width, this.height); ctx.clip();
       for (const c of this.sources) {
         if (this.hidden.has(c)) continue;
         const color = palette[(c.id - 1) % palette.length]; ctx.strokeStyle = ctx.fillStyle = color; ctx.lineWidth = 1.3; ctx.beginPath();
@@ -515,18 +547,19 @@
         });
         ctx.stroke();
       }
-      ctx.strokeStyle = "#9b5437"; ctx.fillStyle = "#793c25"; ctx.setLineDash([4, 3]);
+      ctx.strokeStyle = ctx.fillStyle = "#d0021b"; ctx.setLineDash([4, 3]);
       for (const marker of this.hooks.restarts()) if (marker.time >= g.lo && marker.time <= g.hi) {
-        const x = this.x(marker.time); ctx.beginPath(); ctx.moveTo(x, 12); ctx.lineTo(x, h - 36); ctx.stroke(); ctx.fillText("≈ restart", x + 4, 24);
+        const x = this.x(marker.time); ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, h - 36); ctx.stroke(); ctx.fillText("≈ restart", x + 4, T + 12);
       }
       ctx.restore(); ctx.setLineDash([]);
-      if (!retained) { ctx.textAlign = "center"; ctx.fillStyle = "#647586"; ctx.fillText("Waiting for valid data", 64 + this.width / 2, h / 2); }
-      this.controls.children[0].setAttribute("aria-pressed", String(g.live));
+      if (!retained) { ctx.textAlign = "center"; ctx.fillStyle = ink; ctx.fillText("Waiting for valid data", 64 + this.width / 2, h / 2); }
+      this.liveBox.checked = g.live;
       this.baseReadout = (g.live ? "Live" : "Inspecting") + ` · ${format(g.lo)}–${format(g.hi)} s · ${retained} samples` +
         (this.sources.some(c => c.history.compacted) ? " · older history summarized" : "") +
         (this.sources.some(c => c.history.evicted) ? " · oldest coverage expired" : "") +
         (g.a !== null && g.b === null ? " · A " + format(g.a) + " s" : "");
-      this.band(g.a, g.b); this.inspect();
+      const d = this.drag; if (d && this.mode === "Zoom") this.band(d.t, d.end); else this.band(g.a, g.b);
+      this.inspect();
       this.measure.replaceChildren();
       if (g.a !== null && g.b !== null) {
         const lo = Math.min(g.a, g.b), hi = Math.max(g.a, g.b), dt = hi - lo;

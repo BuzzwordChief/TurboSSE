@@ -1,6 +1,7 @@
 """Browser-level graph, shared history, interaction and CSV integration checks."""
 import csv
 import io
+import re
 import math
 import os
 from pathlib import Path
@@ -172,25 +173,111 @@ class GraphCases:
         self.received(24)
         canvas = self.page.locator('#a canvas')
         box = canvas.bounding_box()
-        self.page.mouse.move(box['x'] + 150, box['y'] + 100)
-        self.page.mouse.down()
+        self.page.mouse.click(box['x'] + 150, box['y'] + 100)  # The first click activates the plot.
+        self.page.mouse.down(button='right')
         self.page.mouse.move(box['x'] + box['width'] * .65, box['y'] + 140, steps=5)
-        self.page.mouse.up()
+        self.page.mouse.up(button='right')
         self.page.mouse.move(box['x'] + 400, box['y'] + 110)
         expect(self.page.locator('#a .turbo-sse-readout')).to_contain_text('Elapsed')
-        expect(self.page.locator('#a [data-action="Live"]')).to_have_attribute('aria-pressed', 'false')
-        expect(self.page.locator('#b [data-action="Live"]')).to_have_attribute('aria-pressed', 'false')
+        expect(self.page.locator('#a [data-action="Live"]')).not_to_be_checked()
+        expect(self.page.locator('#b [data-action="Live"]')).not_to_be_checked()
         self.page.mouse.move(1, 1)
         expect(self.page.locator('#a .turbo-sse-readout')).to_contain_text('Inspecting')
-        self.page.locator('#a select').select_option('Measure')
+        self.page.keyboard.down('Shift')
         self.page.mouse.move(box['x'] + 170, box['y'] + 100)
         self.page.mouse.down()
         self.page.mouse.move(box['x'] + 550, box['y'] + 100, steps=5)
         self.page.mouse.up()
+        self.page.keyboard.up('Shift')
         expect(self.page.locator('#a .turbo-sse-measure')).to_contain_text('RMS')
         expect(self.page.locator('#b .turbo-sse-measure')).to_contain_text('Δt')
         canvas.focus(); self.page.keyboard.press('Escape'); self.page.keyboard.press('l')
-        expect(self.page.locator('#a [data-action="Live"]')).to_have_attribute('aria-pressed', 'true')
+        expect(self.page.locator('#a [data-action="Live"]')).to_be_checked()
+        self.page.mouse.move(box['x'] + 300, box['y'] + 100)
+        self.page.mouse.wheel(0, 240)
+        expect(self.page.locator('#a [data-action="Live"]')).to_be_checked()
+        self.page.locator('#a [data-action="Live"]').uncheck()
+        expect(self.page.locator('#b [data-action="Live"]')).not_to_be_checked()
+
+    def span(self, plot):
+        # Plots redraw on the next animation frame; wait for two so the readout is current.
+        self.page.evaluate('new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))')
+        text = self.page.locator(plot + ' .turbo-sse-readout').inner_text()
+        lo, hi = re.search(r'([-\d.e+]+)–([-\d.e+]+) s', text).groups()
+        return float(hi) - float(lo), text
+
+    def test_click_to_activate(self):
+        self.open('<div id="a" data-sse-graph data-sse-event="v"></div><div style="height:3000px"></div>')
+        for i in range(12):
+            self.case.emit('v', str(i)); self.page.wait_for_timeout(15)
+        self.received(12)
+        plot, tools, canvas = self.page.locator('#a .turbo-sse-plot'), self.page.locator('#a .turbo-sse-tools'), self.page.locator('#a canvas')
+        box = canvas.bounding_box()
+        hint = 'getComputedStyle(document.querySelector("#a .turbo-sse-plot"), "::before").content'
+        # Inactive: hovering asks for a click, tools stay hidden, and the wheel scrolls the page.
+        self.page.mouse.move(box['x'] + 300, box['y'] + 100)
+        self.assertEqual(self.page.evaluate(hint), '"Click to interact"')
+        expect(tools).to_be_hidden()
+        self.page.mouse.wheel(0, 200)
+        self.page.wait_for_function('scrollY > 0')
+        self.page.evaluate('scrollTo(0, 0)'); self.page.wait_for_function('scrollY === 0')
+        # The first click only activates: tools appear, the message goes, and nothing pans.
+        box = canvas.bounding_box()
+        self.page.mouse.click(box['x'] + 300, box['y'] + 100)
+        expect(plot).to_have_attribute('data-active', '')
+        expect(tools).to_be_visible()
+        self.assertEqual(self.page.evaluate(hint), 'none')
+        expect(self.page.locator('#a [data-action="Live"]')).to_be_checked()
+        # Active: the wheel zooms the plot instead of scrolling the page.
+        self.page.evaluate('scrollTo(0, 50)'); self.page.wait_for_function('scrollY === 50')
+        box = canvas.bounding_box()
+        self.page.mouse.move(1, 1)
+        before, _ = self.span('#a')
+        self.page.mouse.move(box['x'] + 300, box['y'] + box['height'] / 2)
+        self.page.mouse.wheel(0, -200)
+        self.page.wait_for_timeout(300)
+        self.assertEqual(self.page.evaluate('scrollY'), 50)
+        self.page.mouse.move(1, 1)
+        after, text = self.span('#a')
+        self.assertLess(after, before * .8, text)
+        # Clicking elsewhere deactivates the plot again.
+        self.page.mouse.click(5, box['y'] + box['height'] + 200)
+        expect(plot).not_to_have_attribute('data-active', '')
+        expect(tools).to_be_hidden()
+
+    def test_live_toggle_fit_zoom_band_and_reserved_controls(self):
+        self.open('<div id="a" data-sse-graph data-sse-event="v"></div>')
+        for i in range(12):
+            self.case.emit('v', str(i)); self.page.wait_for_timeout(15)
+        self.received(12)
+        live, canvas = self.page.locator('#a [data-action="Live"]'), self.page.locator('#a canvas')
+        box = canvas.bounding_box()
+        # Controls sit in a reserved band above the plot, never over data.
+        self.page.mouse.click(box['x'] + 300, box['y'] + box['height'] / 2)
+        self.assertLessEqual(self.page.evaluate('(() => { const t = document.querySelector("#a .turbo-sse-tools"); return t.offsetTop + t.offsetHeight; })()'),
+                             self.page.evaluate('parseFloat(document.querySelector("#a .turbo-sse-cursor").style.top)'))
+        # Fit keeps Live; L toggles it off and on.
+        self.page.locator('#a [data-action="Fit"]').click()
+        expect(live).to_be_checked()
+        canvas.focus(); self.page.keyboard.press('l')
+        expect(live).not_to_be_checked()
+        # Re-enabling Live keeps the zoomed span.
+        self.page.keyboard.press('+'); self.page.keyboard.press('+')
+        self.page.mouse.move(1, 1)
+        before, _ = self.span('#a')
+        live.check()
+        self.page.mouse.move(1, 1)
+        expect(self.page.locator('#a .turbo-sse-readout')).to_contain_text('Live')
+        after, text = self.span('#a')
+        self.assertAlmostEqual(after, before, delta=before * .02, msg=text)
+        # The right-drag zoom band stays visible while the pointer rests and data arrives.
+        self.page.mouse.move(box['x'] + 150, box['y'] + 100)
+        self.page.mouse.down(button='right')
+        self.page.mouse.move(box['x'] + 400, box['y'] + 100, steps=4)
+        self.case.emit('v', '5'); self.received(13); self.page.wait_for_timeout(150)
+        expect(self.page.locator('#a .turbo-sse-selection')).to_be_visible()
+        self.page.mouse.up(button='right')
+        expect(self.page.locator('#a .turbo-sse-selection')).to_be_hidden()
 
     def test_restart_rows_and_unsynchronized_times(self):
         self.open('<div data-sse-graph data-sse-event="v"></div>')
@@ -276,8 +363,8 @@ class GraphCases:
         for i in range(8):
             self.case.emit('v',str(i));self.page.wait_for_timeout(15)
         self.received(8)
-        self.page.locator('.turbo-sse-tools select').select_option('Measure')
         box=self.page.locator('canvas').bounding_box()
+        self.page.touchscreen.tap(box['x']+300,box['y']+90)  # The first tap activates the plot.
         self.page.touchscreen.tap(box['x']+120,box['y']+90)
         expect(self.page.locator('.turbo-sse-selection')).to_be_visible()
         self.page.touchscreen.tap(box['x']+400,box['y']+100)
@@ -290,8 +377,8 @@ class GraphCases:
             self.case.emit('v',str(i));self.case.emit('w',str(i));self.page.wait_for_timeout(12)
         self.received(32)
         box=self.page.locator('#a canvas').bounding_box()
-        self.page.mouse.move(box['x']+170,box['y']+90);self.page.mouse.down()
-        self.page.mouse.move(box['x']+650,box['y']+90,steps=5);self.page.mouse.up()
+        self.page.mouse.click(box['x']+170,box['y']+90);self.page.mouse.down(button='right')
+        self.page.mouse.move(box['x']+650,box['y']+90,steps=5);self.page.mouse.up(button='right')
         self.page.locator('#a [data-action="Export view"]').click()
         files=self.export_files(prepare=False)
         self.assertEqual(list(files),['s01-v.csv'])
