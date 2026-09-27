@@ -46,6 +46,11 @@
     return value;
   }
 
+  function numeric(value) {
+    if (typeof value === "string" && /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(value.trim())) value = Number(value);
+    return typeof value === "number" && Number.isFinite(value) ? value : NaN;
+  }
+
   function pointer(path) {
     if (path === null) return null;
     if (path === "") return [];
@@ -80,7 +85,7 @@
   }
 
   function start(root) {
-    const counts = {received: 0, evicted: 0, oversized: 0, parseErrors: 0, transformErrors: 0, configErrors: 0, appendDrops: 0};
+    const counts = {received: 0, evicted: 0, oversized: 0, parseErrors: 0, transformErrors: 0, configErrors: 0, appendDrops: 0, omitted: 0, clockErrors: 0, restarts: 0};
     let capture;
     let timeout = 0;
     let source = null;
@@ -96,6 +101,10 @@
     const events = new Set(["message", "heartbeat"]);
     const dirty = new Set();
     const started = performance.now();
+    const omitted = new Set((attr(root, "omit-raw") || "").split(/\s+/).filter(Boolean));
+    const uptimeEvent = attr(root, "uptime-event") || "uptime";
+    const clock = {value: null, at: 0, synced: false, opened: false, compare: false, segment: 0};
+    const restarts = [];
     const bar = document.createElement("div");
     bar.className = "turbo-sse-bar";
     bar.innerHTML = '<span class="turbo-sse-status" role="status" aria-live="polite"></span><span class="turbo-sse-counts"></span><button type="button" class="turbo-sse-export">Export CSV</button><button type="button" class="turbo-sse-retry" hidden>Retry</button>';
@@ -103,6 +112,9 @@
     const counter = bar.children[1];
     const exportButton = bar.children[2];
     const retryButton = bar.children[3];
+    const uptimeDisplay = document.createElement("span");
+    uptimeDisplay.className = "turbo-sse-uptime";
+    bar.insertBefore(uptimeDisplay, counter);
     root.prepend(bar);
 
     function configError(error) {
@@ -112,22 +124,31 @@
 
     function setState(value) {
       state = value;
+      if (value !== "Connected") clock.synced = false;
       bar.dataset.state = value.toLowerCase();
       status.textContent = value;
       retryButton.hidden = value !== "Disconnected";
     }
 
+    function uptime(time) {
+      return clock.synced ? clock.value + (time - clock.at) / 1000 : NaN;
+    }
+
     function stats() {
-      return Object.assign({}, counts, {state, retained: capture ? capture.size : 0, bytes: capture ? capture.bytes : 0, lastEventId: lastId});
+      const u = uptime(performance.now());
+      return Object.assign({}, counts, {state, retained: capture ? capture.size : 0, bytes: capture ? capture.bytes : 0, lastEventId: lastId,
+        uptime: Number.isFinite(u) ? u : null, lastUptime: clock.value, segment: clock.segment});
     }
 
     function counters() {
       const s = stats();
       let text = "Captured: " + s.retained + " · Evicted: " + s.evicted;
-      for (const [key, label] of [["oversized", "Oversized"], ["appendDrops", "Append drops"], ["parseErrors", "JSON errors"], ["transformErrors", "Transform errors"], ["configErrors", "Config errors"]]) {
+      for (const [key, label] of [["omitted", "Omitted"], ["oversized", "Oversized"], ["appendDrops", "Append drops"], ["parseErrors", "JSON errors"], ["transformErrors", "Transform errors"], ["configErrors", "Config errors"], ["clockErrors", "Clock errors"]]) {
         if (s[key]) text += " · " + label + ": " + s[key];
       }
       if (counter.textContent !== text) counter.textContent = text;
+      uptimeDisplay.textContent = s.uptime === null ? "Uptime —" + (clock.value === null ? "" : " (unsynchronized)") :
+        "Uptime ≈" + [Math.floor(s.uptime / 3600), Math.floor(s.uptime / 60) % 60, Math.floor(s.uptime) % 60].map(v => String(v).padStart(2, "0")).join(":");
     }
 
     function fragment(element, text, html) {
@@ -170,7 +191,24 @@
       counts.received++;
       const record = {time: Date.now(), elapsed: elapsed - started, event: event.type, id: lastId, data: event.data,
         bytes: 2 * (event.type.length + lastId.length + event.data.length)};
-      if (!capture.push(record, () => counts.evicted++)) counts.oversized++;
+      if (omitted.has(event.type)) counts.omitted++;
+      else if (!capture.push(record, () => counts.evicted++)) counts.oversized++;
+      if (event.type === uptimeEvent) {
+        const value = numeric(event.data);
+        if (!Number.isFinite(value) || value < 0) counts.clockErrors++;
+        else {
+          if (clock.compare && clock.value !== null && value < clock.value) {
+            clock.segment++;
+            counts.restarts++;
+            restarts.push({time: record.elapsed / 1000 - value, detected: record.elapsed / 1000, segment: clock.segment});
+            if (restarts.length > 256) restarts.shift();
+          }
+          clock.value = value;
+          clock.at = elapsed;
+          clock.synced = true;
+          clock.compare = false;
+        }
+      }
       const targets = bindings.get(event.type);
       if (!targets) return;
       let parsed;
@@ -293,6 +331,9 @@
         for (const name of events) source.addEventListener(name, receive);
         source.onopen = event => {
           if (event instanceof MessageEvent) return;
+          clock.compare = clock.opened;
+          clock.opened = true;
+          clock.synced = false;
           setState("Connected");
           lastReceive = performance.now();
           if (timeout) watchdog = setTimeout(watch, timeout);
@@ -325,6 +366,7 @@
     try {
       capture = new Ring(number(root, "buffer-events", 10000, 1), number(root, "buffer-bytes", 2097152, 1));
       timeout = number(root, "timeout", 0, 0);
+      try { register(uptimeEvent); } catch (error) { configError(error); }
       refresh();
       connect(false);
     } catch (error) {

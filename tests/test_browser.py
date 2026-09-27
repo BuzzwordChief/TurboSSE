@@ -337,6 +337,63 @@ class BrowserCases:
         self.assertEqual(self.stats()["configErrors"], 3)
         expect(self.page.locator(".turbo-sse-counts")).to_contain_text("Config errors: 3")
 
+    def test_omission_only_filters_raw_capture(self):
+        self.open('<span id="v" data-sse-event="v"></span>'
+                  '<span id="bad" data-sse-event="json" data-sse-json="/value">old</span>',
+                  'data-sse-omit-raw="v json uptime"')
+        self.case.emit("v", "visible", "cursor:1")
+        self.case.emit("json", "{broken", "cursor:2")
+        self.case.emit("uptime", "12.5", "cursor:3")
+        self.case.emit("message", "retained", "cursor:4")
+        self.received(4)
+        self.text("#v", "visible")
+        self.text("#bad", "old")
+        self.assertEqual(self.stats()["omitted"], 3)
+        self.assertEqual(self.stats()["parseErrors"], 1)
+        self.assertEqual(self.stats()["lastEventId"], "cursor:4")
+        self.assertGreaterEqual(self.stats()["uptime"], 12.5)
+        self.assertEqual([r["data"] for r in self.export()], ["retained"])
+
+    def test_uptime_sync_custom_name_and_validation(self):
+        self.open('<span id="v" data-sse-event="tick"></span>', 'data-sse-uptime-event="tick"')
+        self.text(".turbo-sse-uptime", "Uptime —")
+        self.case.emit("tick", "3661.25")
+        self.received(1)
+        self.page.wait_for_function("TurboSSE.stats().uptime > 3661.5")
+        expect(self.page.locator(".turbo-sse-uptime")).to_contain_text("Uptime ≈01:01:")
+        for bad in ("", " ", "-1", "Infinity", "NaN", "1seconds", '{"uptime":1}', "0x10"):
+            self.case.emit("tick", bad)
+        self.received(9)
+        self.assertEqual(self.stats()["clockErrors"], 8)
+        self.assertEqual(self.stats()["lastUptime"], 3661.25)
+        self.case.emit("tick", "3.25")
+        self.received(10)
+        self.assertEqual(self.stats()["restarts"], 0)
+        self.assertEqual(self.stats()["lastUptime"], 3.25)
+
+    def test_restart_uses_first_valid_report_after_reconnect(self):
+        self.open("")
+        self.case.emit("uptime", "100")
+        self.received(1)
+        self.case.disconnect()
+        self.page.wait_for_function("TurboSSE.stats().uptime === null")
+        self.wait_requests(2)
+        self.text(".turbo-sse-status", "Connected")
+        self.case.emit("uptime", "invalid")
+        self.case.emit("uptime", "2.5")
+        self.received(3)
+        self.assertEqual(self.stats()["restarts"], 1)
+        self.assertEqual(self.stats()["segment"], 1)
+        self.case.emit("uptime", "1")
+        self.received(4)
+        self.assertEqual(self.stats()["restarts"], 1)
+        self.case.disconnect()
+        self.wait_requests(3)
+        self.text(".turbo-sse-status", "Connected")
+        self.case.emit("uptime", "1")
+        self.received(5)
+        self.assertEqual(self.stats()["restarts"], 1)
+
     def test_source_asset_and_minified_asset_both_boot(self):
         self.case, url = self.server.add('<span id="v" data-sse-event="v"></span>', asset="src/turbo-sse.js")
         self.page.goto(url)

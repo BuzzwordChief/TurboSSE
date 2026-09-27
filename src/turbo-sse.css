@@ -18,6 +18,7 @@
 .turbo-sse-bar[data-state="disconnected"] .turbo-sse-status,
 .turbo-sse-bar[data-state="stalled"] .turbo-sse-status { color: #b32222; }
 .turbo-sse-counts { flex: 1; }
+.turbo-sse-uptime { font-variant-numeric: tabular-nums; }
 .turbo-sse-bar button {
   padding: .3rem .65rem;
   color: inherit;
