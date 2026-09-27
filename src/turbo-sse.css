@@ -2,8 +2,8 @@
 .turbo-sse-bar, .turbo-sse-plot, .turbo-sse-export-panel { color: #000; background: #fff; font: 12px/1.4 arial, helvetica, sans-serif; font-variant-numeric: tabular-nums; }
 .turbo-sse-bar { position: sticky; top: 0; z-index: 1000; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; padding: 3px 6px; background: #e8e8d0; border-bottom: 1px solid #808080; }
 .turbo-sse-status { padding: 0 6px; font-weight: 700; background: #ffd020; border: 1px solid #808080; }
-.turbo-sse-bar[data-state="connected"] .turbo-sse-status { background: #c0ffc0; }
-.turbo-sse-bar[data-state="disconnected"] .turbo-sse-status, .turbo-sse-bar[data-state="stalled"] .turbo-sse-status { background: #ff9090; }
+[data-state=connected] > .turbo-sse-status { background: #c0ffc0; }
+[data-state=disconnected] > .turbo-sse-status, [data-state=stalled] > .turbo-sse-status { background: #ff9090; }
 .turbo-sse-counts { flex: 1; white-space: nowrap; }
 .turbo-sse-bar button, .turbo-sse-tools > *, .turbo-sse-export-panel button { margin: 0 0 0 3px; padding: 1px 6px; color: inherit; background: #fff; border: 1px solid #808080; border-radius: 3px; font: inherit; cursor: pointer; }
 .turbo-sse-bar button:hover, .turbo-sse-tools > :hover, .turbo-sse-export-panel button:hover { background: #e8e8d0; }
@@ -26,12 +26,14 @@
 .turbo-sse-area canvas:focus-visible { outline-offset: -2px; }
 .turbo-sse-cursor { position: absolute; border-left: 1px solid #000; pointer-events: none; }
 .turbo-sse-cross-y { position: absolute; border-top: 1px dotted #000; pointer-events: none; }
-.turbo-sse-selection { position: absolute; background: #00599620; border: 1px solid #005996; border-width: 0 1px; pointer-events: none; }
+/* A/B measurement: amber band with solid marker lines. Zoom selection: gray band with dashed edges. */
+.turbo-sse-selection { position: absolute; background: #ffd02040; border: solid #b07000; border-width: 0 1px; pointer-events: none; }
+.turbo-sse-selection[data-zoom] { background: #80808033; border-color: #000; border-style: dashed; }
 .turbo-sse-legend { display: flex; flex-wrap: wrap; gap: 0 10px; padding: 2px 5px; background: #e8e8d0; border-top: 1px solid #808080; }
 .turbo-sse-legend button { padding: 1px 0; color: inherit; background: none; border: 0; font: inherit; text-align: left; max-width: 100%; overflow-wrap: anywhere; cursor: pointer; }
 .turbo-sse-legend button::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 5px; background: var(--series-color); border: 1px solid var(--series-color); vertical-align: -1px; }
-.turbo-sse-legend button[aria-pressed="false"] { color: #808080; }
-.turbo-sse-legend button[aria-pressed="false"]::before { background: #fff; }
+.turbo-sse-legend button[aria-pressed=false] { color: #808080; }
+.turbo-sse-legend button[aria-pressed=false]::before { background: #fff; }
 .turbo-sse-series-name { margin-right: 5px; font-weight: 700; }
 .turbo-sse-readout, .turbo-sse-measure p { margin: 0; padding: 2px 5px; border-top: 1px solid #808080; }
 .turbo-sse-measure p:first-child { font-weight: 700; background: #e8e8d0; }

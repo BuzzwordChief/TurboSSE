@@ -199,9 +199,12 @@ class GraphCases:
         self.page.locator('#a [data-action="Live"]').uncheck()
         expect(self.page.locator('#b [data-action="Live"]')).not_to_be_checked()
 
-    def span(self, plot):
-        # Plots redraw on the next animation frame; wait for two so the readout is current.
+    def frames(self):
+        # Plots redraw on the next animation frame; wait for two so the readouts are current.
         self.page.evaluate('new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))')
+
+    def span(self, plot):
+        self.frames()
         text = self.page.locator(plot + ' .turbo-sse-readout').inner_text()
         lo, hi = re.search(r'([-\d.e+]+)–([-\d.e+]+) s', text).groups()
         return float(hi) - float(lo), text
@@ -276,8 +279,48 @@ class GraphCases:
         self.page.mouse.move(box['x'] + 400, box['y'] + 100, steps=4)
         self.case.emit('v', '5'); self.received(13); self.page.wait_for_timeout(150)
         expect(self.page.locator('#a .turbo-sse-selection')).to_be_visible()
+        expect(self.page.locator('#a .turbo-sse-selection')).to_have_attribute('data-zoom', '')
         self.page.mouse.up(button='right')
         expect(self.page.locator('#a .turbo-sse-selection')).to_be_hidden()
+
+    def pointer_y(self):
+        self.frames()
+        text = self.page.locator('#a .turbo-sse-readout').inner_text()
+        return float(re.search(r'· y ([-\d.e+]+)', text).group(1)), text
+
+    def test_markers_stop_live_and_fit_resets_y_zoom(self):
+        self.open('<div id="a" data-sse-graph data-sse-event="v"></div>')
+        for i in range(12):
+            self.case.emit('v', str(i)); self.page.wait_for_timeout(15)
+        self.received(12)
+        live, canvas, selection = self.page.locator('#a [data-action="Live"]'), self.page.locator('#a canvas'), self.page.locator('#a .turbo-sse-selection')
+        box = canvas.bounding_box()
+        spot = (box['x'] + 300, box['y'] + box['height'] / 2)
+        self.page.mouse.click(*spot)
+        expect(live).to_be_checked()
+        # Placing marker A stops Live, like a measure drag; the marker band is not a zoom band.
+        self.page.keyboard.press('a')
+        expect(live).not_to_be_checked()
+        expect(selection).to_be_visible()
+        expect(selection).not_to_have_attribute('data-zoom', '')
+        self.page.keyboard.press('Escape')
+        # Fit shows everything; Shift with right-drag zooms y; Fit again restores the automatic y range.
+        self.page.keyboard.press('f'); self.frames()
+        self.page.mouse.move(*spot); fitted, _ = self.pointer_y()
+        self.page.keyboard.down('Shift')
+        self.page.mouse.move(box['x'] + 100, box['y'] + 60); self.page.mouse.down(button='right')
+        self.page.mouse.move(box['x'] + 600, box['y'] + 150, steps=5); self.page.mouse.up(button='right')
+        self.page.keyboard.up('Shift')
+        self.page.keyboard.press('f'); self.frames()
+        self.page.mouse.move(*spot); refitted, text = self.pointer_y()
+        self.assertAlmostEqual(refitted, fitted, delta=abs(fitted) * .01 + 1e-9, msg=text)
+        self.page.keyboard.down('Shift')
+        self.page.mouse.move(box['x'] + 100, box['y'] + 60); self.page.mouse.down(button='right')
+        self.page.mouse.move(box['x'] + 600, box['y'] + 150, steps=5); self.page.mouse.up(button='right')
+        self.page.keyboard.up('Shift'); self.frames()
+        self.page.mouse.move(*spot); zoomed, text = self.pointer_y()
+        self.assertNotAlmostEqual(zoomed, fitted, delta=abs(fitted) * .01 + 1e-9, msg=text)
+        self.assertEqual(self.page.locator('#a .turbo-sse-tools button').all_inner_texts(), ['FitF', 'Back', 'Export view'])
 
     def test_restart_rows_and_unsynchronized_times(self):
         self.open('<div data-sse-graph data-sse-event="v"></div>')

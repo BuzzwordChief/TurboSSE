@@ -41,6 +41,7 @@ def build(check=False):
     css = re.sub(r"\s+", " ", css)
     css = re.sub(r"\s*([{};,])\s*", r"\1", css)
     css = re.sub(r":\s+", ":", css).strip()  # Keep the space before ":focus-visible" in descendant selectors.
+    css = css.replace(";}", "}")
     outputs = {
         "turbo-sse.min.js": rjsmin.jsmin(javascript).encode("utf-8"),
         "turbo-sse.css": css.encode("utf-8"),

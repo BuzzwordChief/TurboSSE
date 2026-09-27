@@ -331,7 +331,7 @@
       const live = make("label", "", undefined, this.controls);
       this.liveBox = make("input", "", undefined, live); this.liveBox.type = "checkbox"; this.liveBox.dataset.action = "Live"; live.append("Live"); make("kbd", "", "L", live);
       listen(this.liveBox, "change", () => this.live(this.liveBox.checked));
-      for (const action of ["Fit", "Fit Y", "Back", "Export view"]) {
+      for (const action of ["Fit", "Back", "Export view"]) {
         const b = make("button", "", action, this.controls); b.type = "button"; b.dataset.action = action;
         if (action == "Fit") make("kbd", "", "F", b);
       }
@@ -363,8 +363,7 @@
       this.measure = make("div", "turbo-sse-measure", undefined, this.element);
       listen(this.controls, "click", event => {
         const action = event.target.dataset.action;
-        if (action === "Fit") { this.save(); const r = hooks.extent(view); if (view.live) view.window = Infinity; else { view.lo = r[0]; view.hi = Math.max(r[1], r[0] + .001); } }
-        if (action === "Fit Y") this.y = null;
+        if (action === "Fit") { this.save(); this.y = null; const r = hooks.extent(view); if (view.live) view.window = Infinity; else { view.lo = r[0]; view.hi = Math.max(r[1], r[0] + .001); } }
         if (action === "Back" && view.history.length) Object.assign(view, view.history.pop());
         if (action === "Export view") hooks.export(sources, view.a !== null && view.b !== null ? [Math.min(view.a, view.b), Math.max(view.a, view.b)] : [view.lo, view.hi]);
         hooks.invalidate();
@@ -395,7 +394,7 @@
             const shift = (event.clientX - d.x) * (d.hi - d.lo) / this.width;
             this.setRange(d.lo - shift, d.hi - shift, false);
           } else if (this.mode === "Measure") { view.b = t; hooks.invalidate(); }
-          else { d.end = t; this.band(t, d.t); }
+          else { d.end = t; hooks.invalidate(); }
         }
         hooks.cursor(view);
       });
@@ -420,16 +419,14 @@
         if (["arrowleft", "arrowright", "+", "=", "-", "a", "b", "l", "f", "escape"].includes(key)) event.preventDefault();
         if (key === "arrowleft" || key === "arrowright") this.setRange(view.lo + span * (key === "arrowleft" ? -.1 : .1), view.hi + span * (key === "arrowleft" ? -.1 : .1));
         if (["+", "=", "-"].includes(key)) this.zoom(center, key === "-" ? 1.25 : .8);
-        if (key === "a") view.a = center;
-        if (key === "b") view.b = center;
+        if (key === "a" || key === "b") { if (view.live) this.live(false); view[key] = center; }
         if (key === "escape") { this.cancel(); view.a = view.b = null; }
         if (key === "l") this.live(!view.live);
-        if (key === "f") this.controls.querySelector('[data-action="Fit"]').click();
+        if (key === "f") this.controls.querySelector("[data-action=Fit]").click();
         hooks.invalidate();
       });
-      listen(this.element, "focusin", () => this.activate());
-      listen(this.element, "focusout", event => { if (event.relatedTarget && !this.element.contains(event.relatedTarget)) this.activate(false); });
-      listen(document, "pointerdown", event => { if (!this.element.contains(event.target)) this.activate(false); });
+      // A press or focus inside the plot activates it; anywhere else deactivates it.
+      for (const type of ["pointerdown", "focusin"]) listen(document, type, event => this.activate(this.element.contains(event.target)));
       this.observer = new ResizeObserver(() => { this.top = this.controls.offsetHeight + 6; hooks.invalidate(); });
       this.observer.observe(this.area); this.observer.observe(this.controls);
     }
@@ -470,7 +467,8 @@
     time(event) { const rect = this.canvas.getBoundingClientRect(); return this.view.lo + Math.max(0, Math.min(this.width, event.clientX - rect.left - 64)) / this.width * (this.view.hi - this.view.lo); }
     x(t) { return 64 + (t - this.view.lo) / (this.view.hi - this.view.lo) * this.width; }
     value(y) { const f = Math.max(0, Math.min(1, (y - this.top) / this.height)); return this.yMax * (1 - f) + this.yMin * f; }
-    band(a, b) {
+    band(a, b, zoom) {
+      this.selection.toggleAttribute("data-zoom", !!zoom);
       this.selection.hidden = a === null;
       if (this.selection.hidden) return;
       if (b === null) b = a;
@@ -558,7 +556,7 @@
         (this.sources.some(c => c.history.compacted) ? " · older history summarized" : "") +
         (this.sources.some(c => c.history.evicted) ? " · oldest coverage expired" : "") +
         (g.a !== null && g.b === null ? " · A " + format(g.a) + " s" : "");
-      const d = this.drag; if (d && this.mode === "Zoom") this.band(d.t, d.end); else this.band(g.a, g.b);
+      const d = this.drag, z = d && this.mode == "Zoom"; this.band(z ? d.t : g.a, z ? d.end : g.b, z);
       this.inspect();
       this.measure.replaceChildren();
       if (g.a !== null && g.b !== null) {
