@@ -285,8 +285,8 @@
   const palette = ["#235d9c", "#b04a25", "#247766", "#8051a1", "#9a7017", "#3c7180"];
   const format = value => {
     if (!Number.isFinite(value)) return "—";
-    const rounded = Number(value.toPrecision(5));
-    return Number.isFinite(rounded) ? String(rounded) : value.toExponential(4);
+    const magnitude = Math.abs(value);
+    return magnitude && (magnitude >= 1e6 || magnitude < .001) ? value.toExponential(4).replace(/\.?0+e/, "e") : String(Number(value.toPrecision(5)));
   };
   function make(tag, className, text, parent) {
     const node = document.createElement(tag);
@@ -420,7 +420,6 @@
       });
       this.observer = new ResizeObserver(() => hooks.invalidate());
       this.observer.observe(this.area);
-      listen(window, "scroll", () => hooks.invalidate(), {passive: true});
     }
     trimHistory() { if (this.view.history.length > 20) this.view.history.shift(); }
     save() { this.view.history.push({lo: this.view.lo, hi: this.view.hi, live: this.view.live}); this.trimHistory(); }
@@ -446,6 +445,8 @@
       this.selection.hidden = a === null;
       if (this.selection.hidden) return;
       if (b === null) b = a;
+      this.selection.hidden = Math.max(a, b) < this.view.lo || Math.min(a, b) > this.view.hi;
+      if (this.selection.hidden) return;
       const x = Math.max(64, Math.min(this.x(a), this.x(b))), end = Math.min(64 + this.width, Math.max(this.x(a), this.x(b)));
       this.selection.style.cssText = `left:${x}px;top:12px;width:${Math.max(0,end-x)}px;height:${this.height}px`;
     }
@@ -467,8 +468,6 @@
     }
     draw() {
       if (!this.host.isConnected || !this.area.clientWidth || !this.area.getClientRects().length) return;
-      const rect = this.area.getBoundingClientRect();
-      if (rect.bottom < 0 || rect.top > innerHeight) return;
       const w = this.area.clientWidth, h = this.area.clientHeight, dpr = Math.min(3, window.devicePixelRatio || 1), g = this.view;
       this.width = Math.max(1, w - 80); this.height = Math.max(1, h - 48);
       if (this.canvas.width !== Math.round(w * dpr) || this.canvas.height !== Math.round(h * dpr)) { this.canvas.width = Math.round(w * dpr); this.canvas.height = Math.round(h * dpr); }

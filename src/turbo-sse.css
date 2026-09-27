@@ -35,13 +35,14 @@
 .turbo-sse-plot button, .turbo-sse-plot select { color: inherit; background: #fff; border: 1px solid #b8c4ce; border-radius: 3px; font: inherit; padding: .2rem .55rem; cursor: pointer; }
 .turbo-sse-plot button[aria-pressed="true"] { background: #eaf1f8; border-color: #6590b5; }
 .turbo-sse-plot :focus-visible { outline: 2px solid #235d9c; outline-offset: 2px; }
-.turbo-sse-area { position: relative; height: var(--turbo-sse-height,260px); }
+.turbo-sse-area { position: relative; height: var(--turbo-sse-height,260px); overflow: hidden; }
 .turbo-sse-area canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.turbo-sse-area canvas:focus-visible { outline-offset: -2px; }
 .turbo-sse-cursor { position: absolute; border-left: 1px dashed #465d70; pointer-events: none; }
 .turbo-sse-cross-y { position: absolute; border-top: 1px dashed #465d70; pointer-events: none; }
 .turbo-sse-selection { position: absolute; background: #235d9c18; border-left: 1px solid #235d9c; border-right: 1px solid #235d9c; pointer-events: none; }
 .turbo-sse-legend { display: flex; flex-wrap: wrap; gap: .3rem .8rem; padding: .4rem .75rem; }
-.turbo-sse-legend button { border: 0; border-left: 3px solid var(--series-color); text-align: left; }
+.turbo-sse-legend button { border: 0; border-left: 3px solid var(--series-color); text-align: left; max-width: 100%; overflow-wrap: anywhere; }
 .turbo-sse-legend button[aria-pressed="true"] { background: transparent; border-color: var(--series-color); }
 .turbo-sse-legend button[aria-pressed="false"] { opacity: .45; }
 .turbo-sse-series-name { margin-right: .6rem; font-weight: 600; }

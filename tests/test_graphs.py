@@ -322,6 +322,18 @@ class GraphCases:
         self.assertEqual(self.stats()['graphErrors'],0)
         self.assertEqual(self.stats()['transformErrors'],0)
 
+    def test_resize_with_selection_updates_offscreen_panels_without_overflow(self):
+        self.open(''.join('<div id="p{}" data-sse-graph data-sse-sync="x" data-sse-event="v"></div>'.format(i) for i in range(4)))
+        for i in range(8):
+            self.case.emit('v',str(i));self.page.wait_for_timeout(15)
+        self.received(8)
+        self.page.locator('#p0 canvas').focus()
+        self.page.keyboard.press('a');self.page.keyboard.press('ArrowRight');self.page.keyboard.press('b')
+        self.page.set_viewport_size({'width':390,'height':500})
+        self.page.wait_for_function('Array.from(document.querySelectorAll("canvas")).every(c=>Math.abs(c.width-c.clientWidth*devicePixelRatio)<2)')
+        self.assertLessEqual(self.page.evaluate('document.documentElement.scrollWidth'),390)
+        expect(self.page.locator('#p3 .turbo-sse-readout')).not_to_have_text('Waiting for data')
+
 
 for _engine in os.environ.get('TURBO_SSE_BROWSERS', 'chromium,firefox,webkit').split(','):
     _name = _engine.strip()
