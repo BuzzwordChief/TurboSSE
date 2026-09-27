@@ -5,6 +5,7 @@ import json
 import os
 import time
 import unittest
+import zipfile
 
 from tests.support import FixtureServer
 from playwright.sync_api import sync_playwright, expect
@@ -51,11 +52,12 @@ class BrowserCases:
         return self.page.evaluate("TurboSSE.stats()")
 
     def export(self):
+        # Pages without graphs export the same ZIP: export.txt and raw-events.csv.
         with self.page.expect_download() as download_info:
             self.page.locator(".turbo-sse-export").click()
-        download = download_info.value
-        with open(download.path(), encoding="utf-8", newline="") as stream:
-            return list(csv.DictReader(stream))
+        with zipfile.ZipFile(download_info.value.path()) as archive:
+            self.assertEqual(archive.namelist(), ["export.txt", "raw-events.csv"])
+            return list(csv.DictReader(io.StringIO(archive.read("raw-events.csv").decode("utf-8"), newline="")))
 
     def wait_requests(self, count):
         deadline = time.monotonic() + 8

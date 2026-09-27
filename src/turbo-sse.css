@@ -1,23 +1,26 @@
 /* TurboSSE default styling, after the HAProxy status page: Arial, black on white, gray rules, beige bands. */
-.turbo-sse-bar, .turbo-sse-plot, .turbo-sse-export-panel { color: #000; background: #fff; font: 12px/1.4 arial, helvetica, sans-serif; font-variant-numeric: tabular-nums; }
+.turbo-sse-bar, .turbo-sse-plot { color: #000; background: #fff; font: 12px/1.4 arial, helvetica, sans-serif; font-variant-numeric: tabular-nums; }
 .turbo-sse-bar { position: sticky; top: 0; z-index: 1000; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; padding: 3px 6px; background: #e8e8d0; border-bottom: 1px solid #808080; }
 .turbo-sse-status { padding: 0 6px; font-weight: 700; background: #ffd020; border: 1px solid #808080; }
 [data-state=connected] > .turbo-sse-status { background: #c0ffc0; }
 [data-state=disconnected] > .turbo-sse-status, [data-state=stalled] > .turbo-sse-status { background: #ff9090; }
 .turbo-sse-counts { flex: 1; white-space: nowrap; }
-.turbo-sse-bar button, .turbo-sse-tools > *, .turbo-sse-export-panel button { margin: 0 0 0 3px; padding: 1px 6px; color: inherit; background: #fff; border: 1px solid #808080; border-radius: 3px; font: inherit; cursor: pointer; }
-.turbo-sse-bar button:hover, .turbo-sse-tools > :hover, .turbo-sse-export-panel button:hover { background: #e8e8d0; }
+.turbo-sse-bar output:empty { display: none; }
+.turbo-sse-bar button, .turbo-sse-tools > * { margin: 0 0 0 3px; padding: 1px 6px; color: inherit; background: #fff; border: 1px solid #808080; border-radius: 3px; font: inherit; cursor: pointer; }
+.turbo-sse-bar button:hover, .turbo-sse-tools > :hover { background: #e8e8d0; }
 .turbo-sse-tools input { margin: 0 4px 0 0; vertical-align: -1px; }
-.turbo-sse-bar :focus-visible, .turbo-sse-plot :focus-visible, .turbo-sse-export-panel :focus-visible { outline: 2px solid #005996; outline-offset: 1px; }
+.turbo-sse-bar :focus-visible, .turbo-sse-plot :focus-visible { outline: 2px solid #005996; outline-offset: 1px; }
 .turbo-sse-bar [hidden], .turbo-sse-plot [hidden] { display: none; }
-.turbo-sse-plot { position: relative; border: 1px solid #808080; min-width: 0; }
+.turbo-sse-plot { border: 1px solid #808080; min-width: 0; }
+.turbo-sse-plot > header { display: flex; justify-content: space-between; gap: 8px; padding: 1px 5px; color: #fff; background: #123e67; }
+.turbo-sse-plot > header span { font-style: italic; }
 /* The script reserves a band above the plot as tall as this bar, so controls never cover data.
    A plot is inactive until clicked or focused; only an active plot shows its tools and takes the wheel. */
-.turbo-sse-tools { position: absolute; top: 3px; left: 66px; right: 3px; z-index: 1; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 3px 0; font-size: 11px; visibility: hidden; }
-.turbo-sse-plot[data-active] .turbo-sse-tools { visibility: visible; }
-.turbo-sse-plot:not([data-active]):hover::before { content: "Click to interact"; position: absolute; top: 3px; left: 66px; z-index: 1; font-size: 11px; }
+.turbo-sse-tools { position: absolute; top: 3px; left: 66px; right: 3px; z-index: 1; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 3px 0; font-size: 11px; }
+.turbo-sse-plot:not([data-active]) .turbo-sse-tools { visibility: hidden; }
+.turbo-sse-plot:not([data-active]):hover .turbo-sse-tools::before { content: "Click to interact"; position: absolute; top: 0; left: 0; visibility: visible; }
 .turbo-sse-hint { display: flex; flex-wrap: wrap; gap: 1px 8px; margin-right: auto; }
-.turbo-sse-hint, .turbo-sse-plot:not([data-active]):hover::before { padding: 1px 5px; background: #f0f060; border: 1px solid #7040c0; border-radius: 3px; box-shadow: 2px 2px 3px #808080; pointer-events: none; }
+.turbo-sse-hint, .turbo-sse-tools::before { padding: 1px 5px; background: #f0f060; border: 1px solid #7040c0; border-radius: 3px; box-shadow: 2px 2px 3px #808080; pointer-events: none; }
 .turbo-sse-tools kbd { padding: 0 3px; font: inherit; background: #fff; border: 1px solid #808080; border-radius: 3px; }
 .turbo-sse-tools > * > kbd { margin-left: 4px; pointer-events: none; }
 .turbo-sse-area { position: relative; height: var(--turbo-sse-height, 260px); overflow: hidden; color: #000; }
@@ -30,15 +33,11 @@
 .turbo-sse-selection { position: absolute; background: #ffd02040; border: solid #b07000; border-width: 0 1px; pointer-events: none; }
 .turbo-sse-selection[data-zoom] { background: #80808033; border-color: #000; border-style: dashed; }
 .turbo-sse-legend { display: flex; flex-wrap: wrap; gap: 0 10px; padding: 2px 5px; background: #e8e8d0; border-top: 1px solid #808080; }
-.turbo-sse-legend button { padding: 1px 0; color: inherit; background: none; border: 0; font: inherit; text-align: left; max-width: 100%; overflow-wrap: anywhere; cursor: pointer; }
-.turbo-sse-legend button::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 5px; background: var(--series-color); border: 1px solid var(--series-color); vertical-align: -1px; }
-.turbo-sse-legend button[aria-pressed=false] { color: #808080; }
-.turbo-sse-legend button[aria-pressed=false]::before { background: #fff; }
-.turbo-sse-series-name { margin-right: 5px; font-weight: 700; }
+.turbo-sse-legend > * { padding: 1px 0; max-width: 100%; overflow-wrap: anywhere; cursor: pointer; }
+.turbo-sse-legend > ::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 5px; background: var(--series-color); border: 1px solid var(--series-color); vertical-align: -1px; }
+.turbo-sse-legend [aria-pressed=false] { color: #808080; }
+.turbo-sse-legend [aria-pressed=false]::before { background: #fff; }
+.turbo-sse-series-name { margin-right: 2px; font-weight: 700; }
 .turbo-sse-readout, .turbo-sse-measure p { margin: 0; padding: 2px 5px; border-top: 1px solid #808080; }
 .turbo-sse-measure p:first-child { font-weight: 700; background: #e8e8d0; }
-.turbo-sse-export-panel { margin: 6px; padding: 3px 6px; border: 1px solid #808080; }
-.turbo-sse-export-panel button { float: right; margin-left: 6px; }
-.turbo-sse-export-panel p { margin: 2px 0; overflow-wrap: anywhere; }
-.turbo-sse-export-panel a { color: #005996; }
 @media (hover: none) { .turbo-sse-hint { display: none; } }

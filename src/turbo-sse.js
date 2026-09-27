@@ -288,6 +288,7 @@
     const magnitude = Math.abs(value);
     return magnitude && (magnitude >= 1e6 || magnitude < .001) ? value.toExponential(4).replace(/\.?0+e/, "e") : String(Number(value.toPrecision(5)));
   };
+  const put = (node, text) => { if (node.textContent !== text) node.textContent = text; };
   function make(tag, className, text, parent) {
     const node = document.createElement(tag);
     node.className = className;
@@ -316,12 +317,16 @@
       this.host = host; this.sources = sources; this.view = view; this.hooks = hooks;
       this.min = option(host, "y-min", null); this.max = option(host, "y-max", null);
       if (this.min !== null && this.max !== null && this.min >= this.max) throw new Error("Graph y-min must be below y-max");
-      this.hidden = new Set(); this.y = null; this.mode = "Pan"; this.drag = null; this.top = 24; this.width = this.height = 1;
+      this.hidden = new Set(); this.top = 24; this.width = this.height = 1;
       this.abort = new AbortController();
       const listen = (node, name, fn, opts = {}) => node.addEventListener(name, fn, {...opts, signal: this.abort.signal});
+      const title = attr(host, "title") || attr(host, "label") || sources.map(c => c.label).join(", ");
       this.element = make("section", "turbo-sse-plot", undefined, host);
-      this.element.setAttribute("aria-label", attr(host, "label") || sources.map(c => c.label).join(", "));
-      this.controls = make("div", "turbo-sse-tools", undefined, this.element);
+      this.element.setAttribute("aria-label", title);
+      const header = make("header", "", undefined, this.element);
+      make("strong", "", title, header);
+      make("span", "", [...new Set(sources.map(c => c.unit).filter(Boolean))].join(", "), header);
+      this.controls = make("div", "turbo-sse-tools");
       const hint = make("div", "turbo-sse-hint", undefined, this.controls);
       for (const [keys, text] of [["Drag|←|→", "pan"], ["Wheel|+|−", "zoom"], ["Right-drag", "zoom range"], ["Shift|Drag", "measure"], ["A|B", "markers"], ["Esc", "clear"]]) {
         const item = make("span", "", undefined, hint);
@@ -336,6 +341,7 @@
         if (action == "Fit") make("kbd", "", "F", b);
       }
       this.area = make("div", "turbo-sse-area", undefined, this.element);
+      this.area.append(this.controls);
       this.canvas = make("canvas", "", undefined, this.area);
       this.canvas.tabIndex = 0;
       this.canvas.setAttribute("role", "img");
@@ -346,12 +352,15 @@
       this.cursor.hidden = this.horizontal.hidden = this.selection.hidden = true;
       this.legend = make("div", "turbo-sse-legend", undefined, this.element);
       this.values = sources.map(c => {
-        const b = make("button", "", undefined, this.legend); b.type = "button";
+        // A focusable span rather than a <button>, so its name and value can be selected and copied in every browser.
+        const b = make("span", "", undefined, this.legend); b.tabIndex = 0; b.setAttribute("role", "button");
         b.style.setProperty("--series-color", palette[(c.id - 1) % palette.length]);
         b.setAttribute("aria-pressed", "true");
-        make("span", "turbo-sse-series-name", c.label, b);
+        listen(b, "keydown", event => { if (event.key == "Enter" || event.key == " ") { event.preventDefault(); b.click(); } });
+        make("span", "turbo-sse-series-name", c.label, b); b.append(" ");
         const value = make("span", "turbo-sse-series-value", "—", b);
         listen(b, "click", event => {
+          if (!getSelection().isCollapsed) return;  // Selecting text does not toggle the series.
           if (event.shiftKey) { this.hidden = new Set(sources.filter(s => s !== c)); }
           else if (this.hidden.has(c)) this.hidden.delete(c); else this.hidden.add(c);
           this.values.forEach((v, i) => v.parentElement.setAttribute("aria-pressed", String(!this.hidden.has(sources[i]))));
@@ -363,22 +372,26 @@
       this.measure = make("div", "turbo-sse-measure", undefined, this.element);
       listen(this.controls, "click", event => {
         const action = event.target.dataset.action;
-        if (action === "Fit") { this.save(); this.y = null; const r = hooks.extent(view); if (view.live) view.window = Infinity; else { view.lo = r[0]; view.hi = Math.max(r[1], r[0] + .001); } }
-        if (action === "Back" && view.history.length) Object.assign(view, view.history.pop());
-        if (action === "Export view") hooks.export(sources, view.a !== null && view.b !== null ? [Math.min(view.a, view.b), Math.max(view.a, view.b)] : [view.lo, view.hi]);
+        if (action == "Fit") { this.save(); this.y = null; const r = hooks.extent(view); if (view.live) view.window = Infinity; else { view.lo = r[0]; view.hi = Math.max(r[1], r[0] + .001); } }
+        if (action == "Back" && view.history.length) Object.assign(view, view.history.pop());
+        if (action == "Export view") hooks.export(sources, view.a !== null && view.b !== null ? [Math.min(view.a, view.b), Math.max(view.a, view.b)] : [view.lo, view.hi]);
+        // After a pointer click, return focus to the canvas so its shortcuts keep working.
+        // Keyboard activation shows a focus ring on the control; focus then stays for tabbing.
+        if (!event.target.matches(":focus-visible")) this.canvas.focus();
         hooks.invalidate();
       });
       listen(this.canvas, "contextmenu", event => event.preventDefault());
       listen(this.canvas, "wheel", event => {
-        if (!this.element.hasAttribute("data-active")) return;
+        if (!this.active) return;
         event.preventDefault();
         this.zoom(this.time(event), Math.exp(Math.max(-1, Math.min(1, event.deltaY / 300))));
       }, {passive: false});
       listen(this.canvas, "pointerdown", event => {
         if (this.drag || (event.button !== 0 && event.button !== 2)) return;
         event.preventDefault();
-        if (!this.activate()) return this.canvas.focus();
-        this.canvas.focus(); this.canvas.setPointerCapture(event.pointerId);
+        const was = this.activate(); this.canvas.focus();
+        if (!was) return;
+        this.canvas.setPointerCapture(event.pointerId);
         const t = this.time(event);
         this.mode = event.button === 2 ? "Zoom" : event.shiftKey ? "Measure" : "Pan";
         this.drag = {x: event.clientX, y: event.clientY, t, end: t, lo: view.lo, hi: view.hi, live: view.live, a: view.a, b: view.b, fresh: view.a === null || view.b !== null};
@@ -414,7 +427,8 @@
       });
       listen(this.canvas, "pointercancel", () => { this.cancel(); });
       listen(this.canvas, "pointerleave", () => { if (!this.drag) { view.cursor = null; this.cursorY = null; hooks.cursor(view); } });
-      listen(this.canvas, "keydown", event => {
+      listen(document, "keydown", event => {
+        if (!this.active || event.ctrlKey || event.metaKey || event.altKey) return;
         const key = event.key.toLowerCase(), span = view.hi - view.lo, center = view.cursor === null ? (view.lo + view.hi) / 2 : view.cursor;
         if (["arrowleft", "arrowright", "+", "=", "-", "a", "b", "l", "f", "escape"].includes(key)) event.preventDefault();
         if (key === "arrowleft" || key === "arrowright") this.setRange(view.lo + span * (key === "arrowleft" ? -.1 : .1), view.hi + span * (key === "arrowleft" ? -.1 : .1));
@@ -431,12 +445,11 @@
       this.observer.observe(this.area); this.observer.observe(this.controls);
     }
     activate(on = true) {
-      const was = this.element.hasAttribute("data-active");
-      this.element.toggleAttribute("data-active", on);
+      const was = this.active;
+      this.element.toggleAttribute("data-active", this.active = on);
       return was;
     }
-    trimHistory() { if (this.view.history.length > 20) this.view.history.shift(); }
-    save() { const g = this.view; g.history.push({lo: g.lo, hi: g.hi, live: g.live, window: g.window}); this.trimHistory(); }
+    save() { const g = this.view, h = g.history; h.push({lo: g.lo, hi: g.hi, live: g.live, window: g.window}); if (h.length > 20) h.shift(); }
     cancel() {
       if (this.drag) {
         const d = this.drag; Object.assign(this.view, {a: d.a, b: d.b, lo: d.lo, hi: d.hi, live: d.live});
@@ -485,13 +498,13 @@
       if (!this.horizontal.hidden) this.horizontal.style.cssText = `left:64px;top:${this.cursorY}px;width:${this.width}px`;
       this.sources.forEach((c, i) => {
         const point = c.history.nearest(t === null ? g.hi : t, t === null), a = point && point.a;
-        this.values[i].textContent = !a || !a[5] ? "—" : (point.summary ? `${format(a[6])}…${format(a[7])} (mean ${format(a[8])}, n=${a[5]})` : format(a[8])) + (c.unit ? " " + c.unit : "");
+        put(this.values[i], !a || !a[5] ? "—" : (point.summary ? `${format(a[6])}…${format(a[7])} (mean ${format(a[8])}, n=${a[5]})` : format(a[8])) + (c.unit ? " " + c.unit : ""));
       });
       if (t !== null) {
         const point = this.sources[0].history.nearest(t), a = point && point.a;
-        this.readout.textContent = "Elapsed " + format(t) + " s" + (this.cursorY == null ? "" : " · y " + format(this.value(this.cursorY))) + (!a ? "" : point.summary ? ` · summary ${format(a[0])}–${format(a[1])} s` :
-          ` · sample ${format(a[0])} s · uptime ${Number.isFinite(a[2]) ? "≈" + format(a[2]) + " s" : "— (unsynchronized)"}`);
-      } else this.readout.textContent = this.baseReadout || "Waiting for data";
+        put(this.readout, "Elapsed " + format(t) + " s" + (this.cursorY == null ? "" : " · y " + format(this.value(this.cursorY))) + (!a ? "" : point.summary ? ` · summary ${format(a[0])}–${format(a[1])} s` :
+          ` · sample ${format(a[0])} s · uptime ${Number.isFinite(a[2]) ? "≈" + format(a[2]) + " s" : "— (unsynchronized)"}`));
+      } else put(this.readout, this.baseReadout || "Waiting for data");
     }
     draw() {
       if (!this.host.isConnected || !this.area.clientWidth || !this.area.getClientRects().length) return;
@@ -545,9 +558,15 @@
         });
         ctx.stroke();
       }
+      const d = this.drag, z = d && this.mode == "Zoom";
       ctx.strokeStyle = ctx.fillStyle = "#d0021b"; ctx.setLineDash([4, 3]);
       for (const marker of this.hooks.restarts()) if (marker.time >= g.lo && marker.time <= g.hi) {
         const x = this.x(marker.time); ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, h - 36); ctx.stroke(); ctx.fillText("≈ restart", x + 4, T + 12);
+      }
+      // Label each marker on the outer side of the measured interval.
+      ctx.fillStyle = "#b07000"; ctx.font = "bold 11px arial, sans-serif";
+      if (!z) for (const [name, t, other] of [["A", g.a, g.b], ["B", g.b, g.a]]) if (t !== null) {
+        const left = other !== null && t < other; ctx.textAlign = left ? "right" : "left"; ctx.fillText(name, this.x(t) + (left ? -3 : 3), h - 40);
       }
       ctx.restore(); ctx.setLineDash([]);
       if (!retained) { ctx.textAlign = "center"; ctx.fillStyle = ink; ctx.fillText("Waiting for valid data", 64 + this.width / 2, h / 2); }
@@ -556,12 +575,12 @@
         (this.sources.some(c => c.history.compacted) ? " · older history summarized" : "") +
         (this.sources.some(c => c.history.evicted) ? " · oldest coverage expired" : "") +
         (g.a !== null && g.b === null ? " · A " + format(g.a) + " s" : "");
-      const d = this.drag, z = d && this.mode == "Zoom"; this.band(z ? d.t : g.a, z ? d.end : g.b, z);
+      this.band(z ? d.t : g.a, z ? d.end : g.b, z);
       this.inspect();
-      this.measure.replaceChildren();
+      const rows = [];
       if (g.a !== null && g.b !== null) {
         const lo = Math.min(g.a, g.b), hi = Math.max(g.a, g.b), dt = hi - lo;
-        make("p", "", `A ${format(lo)} s · B ${format(hi)} s · Δt ${format(dt)} s · 1/Δt ${format(dt ? 1/dt : NaN)} Hz`, this.measure);
+        rows.push(`A ${format(g.a)} s · B ${format(g.b)} s · Δt ${format(dt)} s · 1/Δt ${format(dt ? 1/dt : NaN)} Hz`);
         for (const c of this.sources) {
           if (this.hidden.has(c)) continue;
           const a = c.history.range(lo, hi), left = c.history.nearest(lo), right = c.history.nearest(hi);
@@ -574,9 +593,10 @@
             if (!left.summary && !right.summary) text += " · slope " + format(seconds ? dy/seconds : NaN) + "/s";
           }
           if (a[0] < lo || a[1] > hi) text += ` · summary coverage ${format(a[0])}–${format(a[1])} s`;
-          make("p", "", text, this.measure);
+          rows.push(text);
         }
       }
+      if (rows.join("\n") !== this.rows) { this.rows = rows.join("\n"); this.measure.replaceChildren(...rows.map(text => make("p", "", text))); }
     }
     destroy() { this.abort.abort(); this.observer.disconnect(); this.element.remove(); }
   }
@@ -607,11 +627,12 @@
     let graphDirty = false, lastDraw = -Infinity;
     const bar = document.createElement("div");
     bar.className = "turbo-sse-bar";
-    bar.innerHTML = '<span class="turbo-sse-status" role="status" aria-live="polite"></span><span class="turbo-sse-counts"></span><button type="button" class="turbo-sse-export">Export CSV</button><button type="button" class="turbo-sse-retry" hidden>Retry</button>';
+    bar.innerHTML = '<span class="turbo-sse-status" role="status" aria-live="polite"></span><span class="turbo-sse-counts"></span><output></output><button type="button" class="turbo-sse-export">Export All</button><button type="button" class="turbo-sse-retry" hidden>Retry</button>';
     const status = bar.children[0];
     const counter = bar.children[1];
-    const exportButton = bar.children[2];
-    const retryButton = bar.children[3];
+    const note = bar.children[2];
+    const exportButton = bar.children[3];
+    const retryButton = bar.children[4];
     const uptimeDisplay = document.createElement("span");
     uptimeDisplay.className = "turbo-sse-uptime";
     bar.insertBefore(uptimeDisplay, counter);
@@ -900,7 +921,7 @@
           if (!view) view = {lo: 0, hi: 1, live: true, window: option(host, "window", 60), history: [], cursor: null, a: null, b: null};
           if (!nextGroups.has(key)) view.window = option(host, "window", 60);
           nextGroups.set(key, view);
-          const signature = JSON.stringify([series.map(c => [c.id, c.label]), attr(host, "y-min"), attr(host, "y-max"), attr(host, "window"), attr(host, "label")]);
+          const signature = JSON.stringify([series.map(c => [c.id, c.label]), attr(host, "y-min"), attr(host, "y-max"), attr(host, "window"), attr(host, "label"), attr(host, "title")]);
           let plot = plots.get(host);
           if (plot && (plot.signature !== signature || plot.view !== view)) { plot.destroy(); plot = null; }
           if (!plot) plot = new Plot(host, series, view, {invalidate, extent, restarts: () => restarts,
@@ -967,14 +988,39 @@
     const csvRow = values => values.map(v => '"' + (v === null || v === undefined || (typeof v === "number" && !Number.isFinite(v)) ? "" : String(v)).replace(/"/g, '""') + '"').join(",");
     const rawRow = row => csvRow([new Date(row.time).toISOString(), row.elapsed.toFixed(3), row.event, row.id, row.data]);
     const stamp = () => new Date().toISOString().replace(/[:.]/g, "-");
-    let exportPanel = null, exportVersion = 0, exportBusy = false, exportURLs = [];
+    let exportVersion = 0, exportBusy = false, exportURLs = [], crcTable;
+    // CRC-32 as ZIP requires it; updated chunk by chunk while each CSV is encoded.
+    const crc32 = (crc, bytes) => {
+      crcTable = crcTable || Int32Array.from({length: 256}, (_, n) => { for (let k = 0; k < 8; k++) n = n & 1 ? 0xEDB88320 ^ n >>> 1 : n >>> 1; return n; });
+      for (let i = 0; i < bytes.length; i++) crc = crcTable[(crc ^ bytes[i]) & 255] ^ crc >>> 8;
+      return crc;
+    };
+    // A store-only ZIP (no compression) built from the prepared CSV Blobs without copying them.
+    function zip(entries) {
+      const now = new Date(), time = now.getHours() << 11 | now.getMinutes() << 5 | now.getSeconds() >> 1;
+      const date = now.getFullYear() - 1980 << 9 | now.getMonth() + 1 << 5 | now.getDate();
+      const fields = list => {
+        const view = new DataView(new ArrayBuffer(list.reduce((n, f) => n + f[0], 0)));
+        let at = 0;
+        for (const [size, value] of list) { view[size > 2 ? "setUint32" : "setUint16"](at, value, true); at += size; }
+        return view;
+      };
+      const parts = [], central = [];
+      let offset = 0, size = 0;
+      for (const e of entries) {
+        // Version 2.0, UTF-8 names, stored; the same fields appear in both headers.
+        const name = new TextEncoder().encode(e.name), common = [[2, 20], [2, 2048], [2, 0], [2, time], [2, date], [4, e.crc], [4, e.size], [4, e.size], [2, name.length], [2, 0]];
+        parts.push(fields([[4, 0x04034b50], ...common]), name, e.blob);
+        central.push(fields([[4, 0x02014b50], [2, 20], ...common, [2, 0], [2, 0], [2, 0], [4, 0], [4, offset]]), name);
+        offset += 30 + name.length + e.size; size += 46 + name.length;
+      }
+      return new Blob([...parts, ...central, fields([[4, 0x06054b50], [4, 0], [2, entries.length], [2, entries.length], [4, size], [4, offset], [2, 0]])], {type: "application/zip"});
+    }
 
     function closeExports() {
       exportVersion++;
       for (const url of exportURLs) URL.revokeObjectURL(url);
       exportURLs = [];
-      if (exportPanel) exportPanel.remove();
-      exportPanel = null;
     }
 
     function exportCSV() {
@@ -989,17 +1035,12 @@
 
     async function showExports(selected, interval) {
       if (exportBusy) return;
-      if (!channels.size) { exportCSV(); return; }
       closeExports();
-      exportBusy = true;
-      const version = exportVersion, prefix = stamp(), lo = interval ? interval[0] : -Infinity, hi = interval ? interval[1] : Infinity;
+      exportBusy = exportButton.disabled = true;
+      const created = new Date().toISOString(), version = exportVersion, prefix = created.replace(/[:.]/g, "-"), lo = interval ? interval[0] : -Infinity, hi = interval ? interval[1] : Infinity;
       const limit = Math.min(268435456, Math.max(8388608, graphBudget * 8 + capture.budget * 4));
-      const panel = exportPanel = make("section", "turbo-sse-export-panel", undefined);
-      panel.dataset.state = "preparing"; panel.setAttribute("aria-label", "CSV exports");
-      bar.after(panel);
-      const close = make("button", "", "Close export", panel); close.type = "button"; close.addEventListener("click", closeExports);
-      const status = make("p", "", "Preparing a snapshot of retained data…", panel); status.setAttribute("role", "status");
-      const links = document.createDocumentFragment(), snapshots = [];
+      note.textContent = "Preparing export…";
+      const snapshots = [], entries = [], lines = [];
       let memory = 0, rowsMade = 0;
       const check = bytes => { if (memory + bytes > limit) throw new Error("Export exceeds its memory budget. Use Export view for a smaller interval."); };
       const valid = () => !dead && version === exportVersion;
@@ -1017,26 +1058,24 @@
         const markers = restarts.map(m => ({...m})).sort((a, b) => a.time - b.time);
         const encoder = new TextEncoder();
         const file = async (name, header, rows, description) => {
-          let chunk = header + "\r\n", size = 0, parts = [];
+          let chunk = header + "\r\n", size = 0, crc = -1, parts = [];
           const append = () => {
             if (!chunk) return;
             const part = encoder.encode(chunk); check(part.byteLength); memory += part.byteLength; size += part.byteLength; parts.push(part); chunk = "";
+            crc = crc32(crc, part);
           };
           for (const line of rows) {
             chunk += line + "\r\n";
             if (chunk.length >= 32768) append();
             if (++rowsMade % 1024 === 0) {
-              status.textContent = "Preparing CSV · " + rowsMade + " rows";
+              note.textContent = "Preparing export · " + rowsMade + " rows";
               await new Promise(resolve => setTimeout(resolve, 0));
               if (!valid()) return;
             }
           }
           append(); check(size); // Allow the Blob construction's transient copy.
-          const blob = new Blob(parts, {type: "text/csv;charset=utf-8"}); parts = [];
-          const url = URL.createObjectURL(blob); exportURLs.push(url);
-          const row = make("p", "", undefined, links), link = make("a", "", name, row);
-          link.href = url; link.download = prefix + "-" + name;
-          make("small", "", " · " + description + " · " + size + " bytes", row);
+          entries.push({name, blob: new Blob(parts), crc: (crc ^ -1) >>> 0, size}); parts = [];
+          lines.push(name + " · " + description + " · " + size + " bytes");
           await new Promise(resolve => setTimeout(resolve, 0));
         };
         if (!selected) {
@@ -1067,13 +1106,19 @@
           await file(name, header, rows(), a ? `${a[5]} samples · ${format(a[0])}–${format(a[1])} s · samples/summaries explicitly identified` : "No retained samples");
           memory -= h.bytes; item.history = null;
         }
-        if (valid()) { panel.append(links); status.textContent = "Snapshot ready. Each file contains its retained history and resolution."; panel.dataset.state = "ready"; }
-      } catch (error) {
         if (valid()) {
-          for (const url of exportURLs) URL.revokeObjectURL(url);
-          exportURLs = []; status.textContent = error.message; panel.dataset.state = "error";
+          // export.txt describes the snapshot and lists every file, first in the ZIP.
+          const text = encoder.encode(["TurboSSE export " + created, interval ? `Plot view, elapsed ${format(lo)}–${format(hi)} s` : "All retained data",
+            "Each CSV file contains its retained history and resolution.", "", ...lines, ""].join("\r\n"));
+          entries.unshift({name: "export.txt", blob: new Blob([text]), crc: (crc32(-1, text) ^ -1) >>> 0, size: text.length});
+          const url = URL.createObjectURL(zip(entries)), link = make("a", "");
+          exportURLs.push(url); link.href = url; link.download = "sse-" + prefix + ".zip"; link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 60000);
+          note.textContent = "";
         }
-      } finally { snapshots.length = 0; exportBusy = false; }
+      } catch (error) {
+        if (valid()) note.textContent = error.message;
+      } finally { snapshots.length = 0; exportBusy = exportButton.disabled = false; }
     }
 
     const exportClick = () => showExports();

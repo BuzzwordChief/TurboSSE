@@ -6,6 +6,7 @@ import math
 import os
 from pathlib import Path
 import unittest
+import zipfile
 
 from playwright.sync_api import expect
 from tests.test_browser import BrowserCases
@@ -22,20 +23,48 @@ class GraphCases:
     stats = BrowserCases.stats
     wait_requests = BrowserCases.wait_requests
 
-    def export_files(self, prepare=True):
-        if prepare:
-            self.page.locator('.turbo-sse-export').click()
-        self.page.wait_for_function('document.querySelector(".turbo-sse-export-panel").dataset.state !== "preparing"')
-        panel = self.page.locator('.turbo-sse-export-panel')
-        self.assertEqual(panel.get_attribute('data-state'), 'ready', panel.inner_text())
-        files = {}
-        for link in panel.locator('a[download]').all():
-            name = link.inner_text()
-            with self.page.expect_download() as download:
-                link.click()
-            data = Path(download.value.path()).read_text(encoding='utf-8')
-            files[name] = list(csv.DictReader(io.StringIO(data)))
-        return files
+    def export_files(self, trigger=None):
+        """Run an export (Export All by default) and return its CSV rows by file name.
+
+        Every export is one ZIP, downloaded directly: export.txt first, then the CSV files.
+        """
+        with self.page.expect_download() as download:
+            (trigger or self.page.locator('.turbo-sse-export').click)()
+        self.assertRegex(download.value.suggested_filename, r'^sse-.+\.zip$')
+        with zipfile.ZipFile(Path(download.value.path())) as z:
+            self.assertIsNone(z.testzip())
+            names = z.namelist()
+            self.assertEqual(names[0], 'export.txt')
+            self.export_text = z.read('export.txt').decode('utf-8')
+            for name in names[1:]:
+                self.assertIn('\r\n{} · '.format(name), self.export_text)
+                self.assertIn(' · {} bytes'.format(z.getinfo(name).file_size), self.export_text)
+            return {name: list(csv.DictReader(io.StringIO(z.read(name).decode('utf-8')))) for name in names[1:]}
+
+    def test_every_export_is_one_zip_with_export_txt(self):
+        self.open('<div id="a" data-sse-graph data-sse-event="v" data-sse-label="Volts"></div><div id="b" data-sse-graph data-sse-event="w"></div>')
+        for i in range(6):
+            self.case.emit('v', str(i)); self.case.emit('w', str(i * 2)); self.page.wait_for_timeout(10)
+        self.received(12)
+        expect(self.page.locator('.turbo-sse-export')).to_have_text('Export All')
+        files = self.export_files()
+        self.assertEqual(list(files), ['raw-events.csv', 's01-Volts.csv', 's02-w.csv'])
+        self.assertEqual(len(files['raw-events.csv']), 12)
+        self.assertIn('All retained data', self.export_text)
+        self.assertIn('raw-events.csv · 12 retained original events', self.export_text)
+        self.assertEqual(self.page.locator('.turbo-sse-export-panel').count(), 0)
+        expect(self.page.locator('.turbo-sse-bar output')).to_have_text('')
+        # Export view of one plot also downloads a ZIP, even for its single CSV.
+        box = self.page.locator('#a canvas').bounding_box()
+        self.page.mouse.click(box['x'] + 200, box['y'] + 100)
+        files = self.export_files(self.page.locator('#a [data-action="Export view"]').click)
+        self.assertEqual(list(files), ['s01-Volts.csv'])
+        self.assertIn('Plot view, elapsed', self.export_text)
+        # A failed export reports its reason next to the button and releases it for a retry.
+        self.page.evaluate('() => { URL.createObjectURL = () => { throw new Error("Download blocked") }; }')
+        self.page.locator('.turbo-sse-export').click()
+        expect(self.page.locator('.turbo-sse-bar output')).to_have_text('Download blocked')
+        expect(self.page.locator('.turbo-sse-export')).to_be_enabled()
 
     def raw_rows(self):
         with self.page.expect_download() as download:
@@ -87,7 +116,6 @@ class GraphCases:
         self.assertEqual(len(files), 3)
         self.assertEqual(float(files['s01-X.csv'][0]['value']), 4.5)
         self.assertEqual(files['s01-X.csv'][0]['transform'], 'scale')
-        self.page.locator('.turbo-sse-export-panel button').click()
         self.page.evaluate('document.querySelector("#a").remove();TurboSSE.refresh()')
         self.case.emit('v', '{"x":3,"y":9}')
         self.received(2)
@@ -119,10 +147,11 @@ class GraphCases:
         for i in range(3000):
             self.case.emit('v', str(i))
         self.received(3000)
-        self.page.locator('.turbo-sse-export').click()
-        for i in range(3000, 3300):
-            self.case.emit('v', str(i))
-        files = self.export_files(prepare=False)
+        def export_while_receiving():
+            self.page.locator('.turbo-sse-export').click()
+            for i in range(3000, 3300):
+                self.case.emit('v', str(i))
+        files = self.export_files(export_while_receiving)
         self.assertEqual(len(files['raw-events.csv']), 3000)
         self.assertEqual(sum(int(r['count']) for r in files['s01-v.csv']), 3000)
         self.received(3300)
@@ -200,14 +229,27 @@ class GraphCases:
         expect(self.page.locator('#b [data-action="Live"]')).not_to_be_checked()
 
     def frames(self):
-        # Plots redraw on the next animation frame; wait for two so the readouts are current.
-        self.page.evaluate('new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))')
+        # Redraws are capped at about 30 per second (33 ms apart); wait past that, then two frames.
+        self.page.evaluate('new Promise(r => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(r)), 40))')
 
     def span(self, plot):
         self.frames()
         text = self.page.locator(plot + ' .turbo-sse-readout').inner_text()
         lo, hi = re.search(r'([-\d.e+]+)–([-\d.e+]+) s', text).groups()
         return float(hi) - float(lo), text
+
+    def test_generated_header_shows_title_and_units(self):
+        self.open('<div id="a" data-sse-graph data-sse-title="Thermal response">'
+                  '<span data-sse-event="v" data-sse-label="Inlet" data-sse-unit="°C"></span>'
+                  '<span data-sse-event="w" data-sse-label="Outlet" data-sse-unit="°C"></span></div>'
+                  '<div id="b" data-sse-graph data-sse-event="x" data-sse-label="Motor speed" data-sse-unit="rpm"></div>'
+                  '<div id="c" data-sse-graph data-sse-event="y"></div>')
+        for plot, title, units in (('#a', 'Thermal response', '°C'), ('#b', 'Motor speed', 'rpm'), ('#c', 'y', '')):
+            expect(self.page.locator(plot + ' .turbo-sse-plot > header strong')).to_have_text(title)
+            expect(self.page.locator(plot + ' .turbo-sse-plot > header span')).to_have_text(units)
+            expect(self.page.locator(plot + ' .turbo-sse-plot')).to_have_attribute('aria-label', title)
+        self.page.evaluate('document.querySelector("#a").dataset.sseTitle = "Renamed"; TurboSSE.refresh()')
+        expect(self.page.locator('#a .turbo-sse-plot > header strong')).to_have_text('Renamed')
 
     def test_click_to_activate(self):
         self.open('<div id="a" data-sse-graph data-sse-event="v"></div><div style="height:3000px"></div>')
@@ -216,7 +258,7 @@ class GraphCases:
         self.received(12)
         plot, tools, canvas = self.page.locator('#a .turbo-sse-plot'), self.page.locator('#a .turbo-sse-tools'), self.page.locator('#a canvas')
         box = canvas.bounding_box()
-        hint = 'getComputedStyle(document.querySelector("#a .turbo-sse-plot"), "::before").content'
+        hint = 'getComputedStyle(document.querySelector("#a .turbo-sse-tools"), "::before").content'
         # Inactive: hovering asks for a click, tools stay hidden, and the wheel scrolls the page.
         self.page.mouse.move(box['x'] + 300, box['y'] + 100)
         self.assertEqual(self.page.evaluate(hint), '"Click to interact"')
@@ -248,6 +290,72 @@ class GraphCases:
         expect(plot).not_to_have_attribute('data-active', '')
         expect(tools).to_be_hidden()
 
+    def test_toolbar_clicks_keep_canvas_focus(self):
+        self.open('<div id="a" data-sse-graph data-sse-event="v"></div>')
+        for i in range(8):
+            self.case.emit('v', str(i)); self.page.wait_for_timeout(15)
+        self.received(8)
+        live, box = self.page.locator('#a [data-action="Live"]'), self.page.locator('#a canvas').bounding_box()
+        self.page.mouse.click(box['x'] + 300, box['y'] + 100)
+        focused = 'document.activeElement === document.querySelector("#a canvas") && document.querySelector("#a .turbo-sse-plot").hasAttribute("data-active")'
+        for control in ('#a label', '#a [data-action="Live"]', '#a [data-action="Fit"]', '#a [data-action="Back"]'):
+            self.page.locator(control).click()
+            self.assertTrue(self.page.evaluate(focused), control)
+        # Shortcuts keep working after a toolbar click.
+        checked = live.is_checked()
+        self.page.keyboard.press('l')
+        expect(live).to_be_checked(checked=not checked)
+        # Keyboard users stay on the control they activated (WebKit on macOS does not Tab to buttons).
+        if self.ENGINE != 'webkit':
+            self.page.keyboard.press('Shift+Tab'); self.page.keyboard.press('Shift+Tab')
+            self.assertEqual(self.page.evaluate('document.activeElement.dataset.action'), 'Back')
+            self.page.keyboard.press('Enter')
+            self.assertEqual(self.page.evaluate('document.activeElement.dataset.action'), 'Back')
+
+    def test_marker_labels_text_selection_and_shortcuts_after_clicks(self):
+        self.open('<div id="a" data-sse-graph data-sse-event="v" data-sse-label="Volts" data-sse-unit="V"></div>')
+        for i in range(12):
+            self.case.emit('v', str(i)); self.page.wait_for_timeout(15)
+        self.received(12)
+        live, plot, canvas = self.page.locator('#a [data-action="Live"]'), self.page.locator('#a .turbo-sse-plot'), self.page.locator('#a canvas')
+        measure, legend = self.page.locator('#a .turbo-sse-measure'), self.page.locator('#a .turbo-sse-legend > *')
+        self.page.evaluate("""window.labels = []; const f = CanvasRenderingContext2D.prototype.fillText;
+            CanvasRenderingContext2D.prototype.fillText = function (t, ...r) { labels.push(t); return f.call(this, t, ...r); };
+            addEventListener('keydown', e => { window.prevented = e.defaultPrevented; })""")
+        box = canvas.bounding_box()
+        self.page.mouse.click(box['x'] + 300, box['y'] + 100)
+        # Measure right to left: B lies left of A, both are labelled, and the first row names each marker's own time.
+        self.page.keyboard.down('Shift'); self.page.mouse.move(box['x'] + 600, box['y'] + 100); self.page.mouse.down()
+        self.page.mouse.move(box['x'] + 200, box['y'] + 100, steps=5); self.page.mouse.up(); self.page.keyboard.up('Shift')
+        expect(measure).to_contain_text('RMS')
+        self.page.evaluate('labels = []'); self.case.emit('v', '5'); self.received(13); self.frames()
+        self.assertTrue({'A', 'B'} <= set(self.page.evaluate('labels')), self.page.evaluate('labels'))
+        a, b = map(float, re.match(r'A ([-\d.e+]+) s · B ([-\d.e+]+) s', measure.locator('p').first.inner_text()).groups())
+        self.assertGreater(a, b)
+        # Measurement, readout and legend text can be selected, and the selection survives redraws.
+        # Drags start inside the text: Firefox does not start a selection on the legend's color swatch.
+        for target in (measure.locator('p').nth(1), self.page.locator('#a .turbo-sse-readout'), legend.first):
+            r = target.bounding_box()
+            self.page.mouse.move(r['x'] + 16, r['y'] + r['height'] / 2); self.page.mouse.down()
+            self.page.mouse.move(r['x'] + min(r['width'] - 2, 200), r['y'] + r['height'] / 2, steps=6); self.page.mouse.up()
+            self.case.emit('v', '6'); self.frames()
+            selected = self.page.evaluate('getSelection().toString()')
+            self.assertGreater(len(selected.strip()), 3, target)
+            self.assertIn(selected.strip(), target.inner_text())
+        expect(legend.first).to_have_attribute('aria-pressed', 'true')
+        # Clicks outside the canvas keep the plot active, and its shortcuts keep working.
+        for target in (self.page.locator('#a .turbo-sse-readout'), measure.locator('p').first):
+            target.click()
+            expect(plot).to_have_attribute('data-active', '')
+            was = live.is_checked(); self.page.keyboard.press('l'); expect(live).to_be_checked(checked=not was)
+        # Legend entries toggle by click and by keyboard; browser shortcuts with modifiers pass through.
+        legend.first.click(); expect(legend.first).to_have_attribute('aria-pressed', 'false')
+        self.page.keyboard.press('Enter'); expect(legend.first).to_have_attribute('aria-pressed', 'true')
+        self.page.keyboard.press('l'); self.assertTrue(self.page.evaluate('prevented'))
+        self.frames(); was = live.is_checked()
+        self.page.keyboard.press('Control+l'); self.assertFalse(self.page.evaluate('prevented'))
+        self.frames(); self.assertEqual(live.is_checked(), was)
+
     def test_live_toggle_fit_zoom_band_and_reserved_controls(self):
         self.open('<div id="a" data-sse-graph data-sse-event="v"></div>')
         for i in range(12):
@@ -259,7 +367,7 @@ class GraphCases:
         self.page.mouse.click(box['x'] + 300, box['y'] + box['height'] / 2)
         self.assertLessEqual(self.page.evaluate('(() => { const t = document.querySelector("#a .turbo-sse-tools"); return t.offsetTop + t.offsetHeight; })()'),
                              self.page.evaluate('parseFloat(document.querySelector("#a .turbo-sse-cursor").style.top)'))
-        # Fit keeps Live; L toggles it off and on.
+        # Fit is a one-time action that keeps Live; L toggles Live off and on.
         self.page.locator('#a [data-action="Fit"]').click()
         expect(live).to_be_checked()
         canvas.focus(); self.page.keyboard.press('l')
@@ -385,13 +493,10 @@ class GraphCases:
         self.assertEqual(self.stats()['graphs']['plots'],0)
         self.assertEqual(self.raw_rows()[0]['data'],'7')
 
-    def test_closed_export_releases_urls_and_new_snapshot_includes_new_data(self):
+    def test_new_snapshot_includes_new_data(self):
         self.open('<div data-sse-graph data-sse-event="v"></div>')
         self.case.emit('v','1');self.received(1)
         first=self.export_files()
-        urls=self.page.locator('.turbo-sse-export-panel a').evaluate_all('(els)=>els.map(el=>el.href)')
-        self.page.locator('.turbo-sse-export-panel button').click()
-        self.assertTrue(self.page.evaluate('async urls=>(await Promise.all(urls.map(u=>fetch(u).then(()=>false,()=>true)))).every(Boolean)',urls))
         self.case.emit('v','2');self.received(2)
         second=self.export_files()
         self.assertEqual(len(first['s01-v.csv']),1)
@@ -422,8 +527,7 @@ class GraphCases:
         box=self.page.locator('#a canvas').bounding_box()
         self.page.mouse.click(box['x']+170,box['y']+90);self.page.mouse.down(button='right')
         self.page.mouse.move(box['x']+650,box['y']+90,steps=5);self.page.mouse.up(button='right')
-        self.page.locator('#a [data-action="Export view"]').click()
-        files=self.export_files(prepare=False)
+        files=self.export_files(self.page.locator('#a [data-action="Export view"]').click)
         self.assertEqual(list(files),['s01-v.csv'])
         self.assertGreater(len(files['s01-v.csv']),0)
         self.assertLess(len(files['s01-v.csv']),16)

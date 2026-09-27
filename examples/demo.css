@@ -12,9 +12,7 @@ h2 { font-size: 12px; margin: 0; }
 .value { margin: 0; padding: 2px 5px; font-size: 18px; font-variant-numeric: tabular-nums; }
 .value small { font-size: 12px; }
 .instructions { margin: 6px 0 10px; }
-.graph-card { margin: 0 0 10px; }
-.graph-card > header { display: flex; justify-content: space-between; align-items: baseline; padding: 1px 5px; color: #fff; background: #123e67; }
-.graph-card > header > span { font-style: italic; }
+[data-sse-graph] { margin: 0 0 10px; }
 .diagnostics { margin-top: 12px; border-top: 1px solid #000; padding-top: 6px; }
 .diagnostics summary { cursor: pointer; font-weight: 700; }
 .diagnostics > section { margin-top: 6px; border: 1px solid #808080; }

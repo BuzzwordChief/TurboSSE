@@ -4,7 +4,7 @@ A standalone JavaScript library for embedded-device debug pages. Bind SSE events
 
 Build the runtime into `dist/turbo-sse.min.js` and `dist/turbo-sse.css`, or download the GitHub Actions artifact. Copy both files onto your device. No Node.js, bundler, CDN, or Python is needed on the device. Readable sources are in `src/`; Python 3.9 is used for the example server, build tooling, and tests. Generated `dist/` files are ignored by Git.
 
-The shipped JavaScript and CSS total **16,383 bytes gzip** (16.0 KiB). This exceeds the soft 8 KiB target; the complete graphing/inspection/export implementation has a 16 KiB regression ceiling, with 1 byte to spare. Chromium, Firefox, and WebKit tests cover the runtime and downloads. See [VALIDATION.md](VALIDATION.md) for numerical simulations, live-run results, tested hashes, and their scope.
+The shipped JavaScript and CSS total **17,195 bytes gzip** (16.8 KiB). This exceeds the soft 8 KiB target; the complete graphing/inspection/export implementation has a 17 KiB regression ceiling. Chromium, Firefox, and WebKit tests cover the runtime and downloads. See [VALIDATION.md](VALIDATION.md) for numerical simulations, live-run results, tested hashes, and their scope.
 
 **Run the example**
 
@@ -100,7 +100,7 @@ Add `data-sse-graph` to a numeric binding. The existing event/JSON selection syn
 A container without its own event binding can overlay several series. Matching sync names link the time window, cursor and A/B selection across panels:
 
 ```html
-<div data-sse-graph data-sse-sync="motor" data-sse-window="60">
+<div data-sse-graph data-sse-title="Thermal response" data-sse-sync="motor" data-sse-window="60">
   <span data-sse-event="telemetry" data-sse-json="/inlet"
         data-sse-label="Inlet" data-sse-unit="°C"></span>
   <span data-sse-event="telemetry" data-sse-json="/outlet"
@@ -111,16 +111,16 @@ A container without its own event binding can overlay several series. Matching s
      data-sse-label="Motor speed" data-sse-unit="rpm"></div>
 ```
 
-Keep one unit per panel; use stacked panels for different quantities. The first panel in a sync group sets its Live window. Graphs fill their container; set `--turbo-sse-height: 220px` in CSS to change the plot-area height. `data-sse-y-min` and `data-sse-y-max` optionally fix the y range. Graphs own generated controls/canvas/legend DOM and temporarily hide their source spans; destruction restores those spans. The source elements themselves remain intact.
+Keep one unit per panel; use stacked panels for different quantities. The first panel in a sync group sets its Live window. Graphs fill their container; set `--turbo-sse-height: 220px` in CSS to change the plot-area height. `data-sse-y-min` and `data-sse-y-max` optionally fix the y range. Each graph generates a header showing its title and the units of its series. The title is `data-sse-title`, else the graph's own `data-sse-label`, else the series labels. Graphs own generated header/controls/canvas/legend DOM and temporarily hide their source spans; destruction restores those spans. The source elements themselves remain intact.
 
 Hovering shows a crosshair; the readout row lists the elapsed time, the y value under the pointer, and the nearest sample. Legend entries toggle a series (Shift-click isolates one); a hidden series keeps an outlined swatch so it is still listed.
 
-- A plot is inactive until you click it or move keyboard focus into it. Hovering an inactive plot shows "Click to interact", and the wheel scrolls the page as usual. The first click only activates the plot; clicking elsewhere or tabbing away deactivates it. On touch screens an inactive plot lets the page scroll, and the first tap activates it.
-- Drag to pan and use the wheel to zoom around the pointer. While **Live** is checked, the wheel only changes the followed window, so zooming in or out keeps tracking incoming data; panning or selecting a range unchecks Live. Checking Live again keeps the current span and moves it to the newest data. **Fit** shows all retained history and restores automatic y scaling; while Live is checked it keeps showing all of it as data arrives. Right-drag selects a time range to zoom into, shown as a gray band with dashed edges; Shift with right-drag also zooms y.
-- Shift-drag measures an interval, shown as an amber band between solid A and B lines. Measuring and placing a marker both uncheck Live so the markers stay in view. On touch screens, drag pans and two taps set A/B. Keyboard `A` and `B` set them at the cursor, or the view center; Escape clears/cancels. Readouts include delta time/value, slope, count, extrema, peak-to-peak, mean, RMS and population standard deviation.
-- Left/right arrows pan, `+`/`-` zoom, `L` toggles Live, and `F` fits retained history. The Live checkbox, the Fit, Back, and Export view buttons, and a key legend for the pointer and keyboard controls appear in a band above the plot while it is active; Live and Fit show their `L` and `F` keys. The band is reserved, so the controls never cover data. Touch screens show only the buttons.
-- Click a legend entry to hide/show it; Shift-click isolates it. Acquisition continues for hidden series. **Back** restores an earlier time window.
-- **Export view** downloads the selected plot's series for the visible or A/B interval. The toolbar's **Export CSV** offers all retained data.
+- A plot is inactive until you click it or move keyboard focus into it. Hovering an inactive plot shows "Click to interact", and the wheel scrolls the page as usual. The first click only activates the plot; clicking elsewhere or tabbing away deactivates it. Clicking a toolbar control keeps the plot active and returns keyboard focus to the plot, so its shortcuts keep working; a control activated from the keyboard keeps focus. On touch screens an inactive plot lets the page scroll, and the first tap activates it.
+- Drag to pan and use the wheel to zoom around the pointer. While **Live** is checked, the wheel only changes the followed window, so zooming in or out keeps tracking incoming data; panning or selecting a range unchecks Live. Checking Live again keeps the current span and moves it to the newest data. **Fit** is a one-time action: it shows all retained history and restores automatic y scaling. It leaves Live as it is; while Live is checked, the followed window then covers all history as data arrives. Right-drag selects a time range to zoom into, shown as a gray band with dashed edges; Shift with right-drag also zooms y.
+- Shift-drag measures an interval, shown as an amber band between solid A and B lines. Measuring and placing a marker both uncheck Live so the markers stay in view. The markers are labelled A and B on the outer side of the measured interval, and the first measurement row lists each marker's own time. On touch screens, drag pans and two taps set A/B. Keyboard `A` and `B` set them at the cursor, or the view center; Escape clears/cancels. Readouts include delta time/value, slope, count, extrema, peak-to-peak, mean, RMS and population standard deviation.
+- Left/right arrows pan, `+`/`-` zoom, `L` toggles Live, and `F` fits retained history. Shortcuts work while the plot is active, wherever focus is inside it; key combinations with Ctrl, Cmd or Alt are left to the browser. The Live checkbox, the Fit, Back and Export view buttons, and a key legend for the pointer and keyboard controls appear in a band above the plot while it is active; Live and Fit show their `L` and `F` keys. The band is reserved, so the controls never cover data. Touch screens show only the buttons.
+- Click a legend entry, or press Enter or Space on it, to hide/show it; Shift-click isolates it. Legend, readout and measurement text can be selected and copied; selecting legend text does not toggle the series. Acquisition continues for hidden series. **Back** restores an earlier time window.
+- **Export view** downloads a ZIP with the selected plot's series for the visible or A/B interval. The topbar's **Export All** downloads a ZIP with all retained data.
 
 Raw numeric strings and selected JSON numbers are accepted. Null/missing/invalid data creates a visible gap; invalid numbers increment Graph errors. Returning `undefined` from a graph transform skips that update. Graph transforms must return a numeric value (or null/undefined), be synchronous, and be pure. Identical event/selector/transform/unit sources share history and evaluate their transform once per event, even across several plots. Ordinary text transforms retain their per-binding behavior. Use a numeric unit conversion for a graph; a display transform returning `"23.6 °C"` is not a graph value.
 
@@ -138,6 +138,7 @@ Raw numeric strings and selected JSON numbers are accepted. Null/missing/invalid
 | `data-sse-graph-bytes` | Root accounted graph-history/index budget; minimum 8192 | `33554432` (32 MiB) |
 | `data-sse-graph` | Enable a numeric plot or group child series | Absent |
 | `data-sse-sync` | Shared time-navigation/cursor group | Independent |
+| `data-sse-title` | Graph header title | The graph's `data-sse-label`, else its series labels |
 | `data-sse-label`, `data-sse-unit` | Series name and unit | Event name; no unit |
 | `data-sse-window` | Initial/Live visible seconds; positive finite number | `60` |
 | `data-sse-y-min`, `data-sse-y-max` | Optional finite y bounds, min below max | Automatic |
@@ -197,11 +198,11 @@ After reconnect, only the first valid report is compared with the last **reporte
 
 **Connection status and history**
 
-The topbar displays text and a colored marker: Connecting/Reconnecting in amber, Connected in green, and Stalled/Disconnected in red. Its status region announces state changes, while counters update at most once per second. Export CSV and Retry are keyboard-accessible buttons.
+The topbar displays text and a colored marker: Connecting/Reconnecting in amber, Connected in green, and Stalled/Disconnected in red. Its status region announces state changes, while counters update at most once per second. Export All and Retry are keyboard-accessible buttons. Export progress and export errors appear next to Export All in a second status region.
 
 **Styling**
 
-`turbo-sse.css` is deliberately small and follows the look of the HAProxy status page: 12 px Arial, black on white, 1 px gray rules, beige bands for the topbar and legend, tinted connection states (green, amber, red), and a yellow key legend. Numbers use tabular figures. Only generated class names starting with `turbo-sse-` are styled, so an application stylesheet can override any rule. The canvas takes its axis, tick, and grid color from the computed `color` of `.turbo-sse-area`, so restyling the plot does not require editing the script. Series colors come from a fixed six-color palette in the script and are exposed to the legend as `--series-color`.
+`turbo-sse.css` is deliberately small and follows the look of the HAProxy status page: 12 px Arial, black on white, 1 px gray rules, navy plot header bars, beige bands for the topbar and legend, tinted connection states (green, amber, red), and a yellow key legend. Numbers use tabular figures. Only elements inside generated `turbo-sse-` classes are styled, so an application stylesheet can override any rule. The canvas takes its axis, tick, and grid color from the computed `color` of `.turbo-sse-area`, so restyling the plot does not require editing the script. Series colors come from a fixed six-color palette in the script and are exposed to the legend as `--series-color`.
 
 Normal transient failures use the existing native `EventSource` reconnect behavior and the server's `retry:` interval. Terminal closure, including HTTP 204, shows Disconnected and a manual Retry button; the browser does not expose the specific HTTP status to the library.
 
@@ -211,7 +212,7 @@ Native reconnect sends `Last-Event-ID`. Watchdog/manual replacement passes the l
 
 **CSV exports and raw omission**
 
-The toolbar offers `raw-events.csv` and one CSV per unique series. Multiple plot views of the same source produce one series file. A common timestamp prefix identifies a single frozen snapshot. The file list gives coverage and individual download links; close it to release prepared files. Pages without graphs keep the direct raw download. There is no browser disk-streaming API or automatic full-session archive.
+Every export button uses the same path: it freezes one snapshot and downloads it directly as one ZIP named `sse-<timestamp>.zip`, even when it holds a single CSV. **Export All** includes `raw-events.csv` and one CSV per unique series; pages without graphs get just the raw file. **Export view** includes the series of one plot for its visible or A/B interval. Multiple plot views of the same source produce one series file. Every ZIP starts with `export.txt`, which records when the snapshot was taken, whether it covers all retained data or a plot interval, and each file with its coverage and size. The ZIP is stored without compression, so it is built from the prepared files without copying them and needs no extra library; compress it afterwards if size matters. There is no browser disk-streaming API.
 
 **Raw events are captured by default even when graphed.** To save raw-buffer space explicitly:
 
@@ -237,7 +238,7 @@ The raw file and `TurboSSE.exportCSV()` retain the existing five-column schema. 
 
 A summary describes multiple samples over an interval. Its mean is never exported as a pretend original point. Requested intervals intersecting a summary include that entire bucket and report the effective coverage. Gap and restart rows carry no measurement value. Original payloads, unselected JSON fields and compacted individual samples cannot be reconstructed from these numeric CSVs; retain raw capture or use an external raw-stream recorder when those are needed.
 
-Export preparation freezes a bounded copy, yields between batches and leaves acquisition running. Only one export is prepared at a time. Its temporary budget is computed from configured capture/history budgets, between 8 and 256 MiB; it includes snapshot accounting, encoded output and a transient Blob-copy allowance. A too-large export fails visibly before download links are offered: use Export view for a smaller range. Prepared Blobs are released when the panel is closed/replaced or the runtime is destroyed. Browser-native allocation/GC timing is not an exact process-memory guarantee.
+Export preparation freezes a bounded copy, yields between batches and leaves acquisition running. Only one export is prepared at a time. Its temporary budget is computed from configured capture/history budgets, between 8 and 256 MiB; it includes snapshot accounting, encoded output and a transient Blob-copy allowance. A too-large export fails with a message next to Export All before anything is downloaded: use Export view for a smaller range. Prepared data is released 60 seconds after the download starts, when another export starts, or when the runtime is destroyed. Browser-native allocation/GC timing is not an exact process-memory guarantee.
 
 **CSV and memory bounds**
 
@@ -284,7 +285,7 @@ The tests run against real localhost SSE endpoints in Chromium, Firefox, and Web
 
 `TURBO_SSE_BROWSERS=chromium,firefox` selects engines for discovery. `TURBO_SSE_ASSET=src/turbo-sse.js` exercises the readable source instead of the default minified asset. The Python tests and example require no Node.js installation. Playwright and rjsmin are development dependencies only.
 
-The build emits minified assets, deterministic `.gz` variants, and C headers for both JavaScript representations, and reports the soft 8 KiB combined gzip target and enforces a 16 KiB regression ceiling for JavaScript and CSS. When serving a precompressed `.gz` asset, keep the original JavaScript/CSS content type and send `Content-Encoding: gzip`; do not merely link to a `.gz` URL without that header.
+The build emits minified assets, deterministic `.gz` variants, and C headers for both JavaScript representations, and reports the soft 8 KiB combined gzip target and enforces a 17 KiB regression ceiling for JavaScript and CSS. When serving a precompressed `.gz` asset, keep the original JavaScript/CSS content type and send `Content-Encoding: gzip`; do not merely link to a `.gz` URL without that header.
 
 **Embed the JavaScript in firmware**
 

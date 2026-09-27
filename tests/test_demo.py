@@ -2,6 +2,7 @@
 from pathlib import Path
 import threading
 import unittest
+import zipfile
 from urllib.request import urlopen
 
 from examples.server import DeviceServer
@@ -51,13 +52,14 @@ class DemoTests(unittest.TestCase):
                 output = ROOT / "test-results"
                 output.mkdir(exist_ok=True)
                 page.screenshot(path=str(output / "demo.png"), full_page=True)
-                page.locator(".turbo-sse-export").click()
-                page.wait_for_function('document.querySelector(".turbo-sse-export-panel").dataset.state === "ready"')
-                self.assertEqual(page.locator(".turbo-sse-export-panel a").count(), 5)
+                with page.expect_download() as archive:
+                    page.locator(".turbo-sse-export").click()
+                with zipfile.ZipFile(archive.value.path()) as z:
+                    self.assertIsNone(z.testzip())
+                    self.assertEqual(z.namelist(), ["export.txt", "raw-events.csv", "s01-Inlet-temperature.csv",
+                                                    "s02-Outlet-temperature.csv", "s03-Motor-speed.csv", "s04-Supply-voltage.csv"])
+                    self.assertIn("diagnostic", z.read("raw-events.csv").decode("utf-8"))
                 expect(page.locator(".turbo-sse-uptime")).to_contain_text("Uptime ≈")
-                with page.expect_download() as download:
-                    page.locator('a[download$="-raw-events.csv"]').click()
-                self.assertIn("diagnostic", Path(download.value.path()).read_text(encoding="utf-8"))
                 self.assertEqual(errors, [])
             finally:
                 browser.close()

@@ -10,6 +10,7 @@ import platform
 import sys
 import threading
 import time
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -138,12 +139,14 @@ def soak(page, browser, args):
                 print('{:.0f}s: received={} history={} heap={}'.format(elapsed,stats['received'],stats['graphs']['bytes'],heaps[-1]['usedSize']),flush=True)
                 next_report+=60
             if args.export_every and elapsed>=next_export:
-                before=time.monotonic();page.locator('.turbo-sse-export').click()
-                page.wait_for_function('document.querySelector(".turbo-sse-export-panel").dataset.state!=="preparing"',timeout=180000)
-                panel=page.locator('.turbo-sse-export-panel')
-                if panel.get_attribute('data-state')!='ready':raise RuntimeError(panel.inner_text())
-                exports.append({'seconds':round(elapsed,2),'duration_ms':round((time.monotonic()-before)*1000,2),'files':panel.locator('a').count()})
-                panel.locator('button').click();next_export+=args.export_every
+                before=time.monotonic()
+                with page.expect_download(timeout=180000) as download:
+                    page.locator('.turbo-sse-export').click()
+                with zipfile.ZipFile(download.value.path()) as archive:
+                    names=archive.namelist()
+                    if archive.testzip() is not None or names[0]!='export.txt':raise RuntimeError('Invalid export ZIP: '+', '.join(names))
+                exports.append({'seconds':round(elapsed,2),'duration_ms':round((time.monotonic()-before)*1000,2),'files':sum(n.endswith('.csv') for n in names)})
+                next_export+=args.export_every
             page.wait_for_timeout(200)
         page.wait_for_function('n=>TurboSSE.stats().received>=n',arg=server.sent,timeout=30000)
         stats=page.evaluate('TurboSSE.stats()');metrics=page.evaluate('benchmarkMetrics')
