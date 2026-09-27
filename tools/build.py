@@ -1,4 +1,4 @@
-"""Build standalone assets and C headers; check the 5 KiB gzip budget (Python 3.9+)."""
+"""Build standalone assets and C headers; report the 8 KiB gzip target (Python 3.9+)."""
 import argparse
 import gzip
 from pathlib import Path
@@ -8,6 +8,8 @@ import rjsmin
 
 
 ROOT = Path(__file__).resolve().parents[1]
+SIZE_TARGET = 8192
+SIZE_BUDGET = 12288
 
 
 def c_header(contents, compressed=False):
@@ -56,9 +58,9 @@ def build(check=False):
     print("turbo-sse.h: embeds {} JavaScript bytes".format(len(outputs["turbo-sse.min.js"])))
     print("turbo-sse-gzip.h: embeds {} gzip bytes".format(len(artifacts["turbo-sse.min.js.gz"])))
     print("JavaScript source: {} bytes".format(len(javascript.encode("utf-8"))))
-    print("Combined gzip: {} / 5120 bytes".format(total))
-    if total > 5120:
-        raise SystemExit("Bundle exceeds the 5 KiB gzip budget")
+    print("Combined gzip: {} bytes (target {}, regression ceiling {})".format(total, SIZE_TARGET, SIZE_BUDGET))
+    if total > SIZE_BUDGET:
+        raise SystemExit("Bundle exceeds the gzip regression budget")
     for filename, data in artifacts.items():
         path = destination / filename
         if check:

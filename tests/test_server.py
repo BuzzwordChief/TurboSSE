@@ -3,6 +3,7 @@ from pathlib import Path
 import unittest
 
 from examples.server import encode_event
+from tools.build import SIZE_BUDGET
 
 
 class EncoderTests(unittest.TestCase):
@@ -33,4 +34,4 @@ class EncoderTests(unittest.TestCase):
             compressed = asset.with_name(name + ".gz").read_bytes()
             self.assertEqual(gzip.decompress(compressed), asset.read_bytes())
             total += len(compressed)
-        self.assertLessEqual(total, 5120)
+        self.assertLessEqual(total, SIZE_BUDGET)

@@ -84,6 +84,174 @@
     throw new Error("Unsupported transform result");
   }
 
+  // Aggregate: start/end time, start/end uptime, segment, count, min, max,
+  // mean, M2, first/last value, min/max time, gaps, total records.
+  const FIELDS = 16, BLOCK = 128, NODE_BYTES = 256, DATA_BYTES = BLOCK * 3 * 8;
+  function sample(a, t, u, y, segment) {
+    if (!a[15]) { a[0] = t; a[2] = u; a[4] = segment; a[6] = Infinity; a[7] = -Infinity; a[10] = a[11] = NaN; }
+    a[1] = t; a[3] = u; a[15]++;
+    if (!Number.isFinite(y)) { a[14]++; return a; }
+    const n = ++a[5], delta = y - a[8];
+    a[8] += delta / n;
+    a[9] += delta * (y - a[8]);
+    if (n === 1) a[10] = y;
+    a[11] = y;
+    if (y < a[6]) { a[6] = y; a[12] = t; }
+    if (y > a[7]) { a[7] = y; a[13] = t; }
+    return a;
+  }
+
+  function combine(a, b) {
+    const c = a.slice(), n = a[5] + b[5], delta = b[8] - a[8];
+    c[1] = b[1]; c[3] = b[3]; c[4] = a[4] === b[4] ? a[4] : -1;
+    c[5] = n;
+    if (!a[5]) { c[8] = b[8]; c[9] = b[9]; c[10] = b[10]; }
+    else if (b[5]) {
+      c[8] = a[8] + delta * b[5] / n;
+      c[9] = a[9] + b[9] + delta * delta * (a[5] / n) * b[5];
+    }
+    if (b[5]) c[11] = b[11];
+    if (b[6] < a[6]) { c[6] = b[6]; c[12] = b[12]; }
+    if (b[7] > a[7]) { c[7] = b[7]; c[13] = b[13]; }
+    c[14] += b[14]; c[15] += b[15];
+    return c;
+  }
+
+  // Balanced forest of immutable sealed chunks. Index nodes become coarse
+  // history when pressure releases their children. Recent samples stay exact.
+  class History {
+    constructor(limit) {
+      this.limit = limit;
+      this.roots = [];
+      this.current = null;
+      this.levels = new Uint32Array(64);
+      this.temp = new Float64Array(FIELDS);
+      this.bytes = 512;
+      this.raw = this.compacted = this.evicted = 0;
+    }
+    resize(limit) { this.limit = limit; this.reserve(0); }
+    release(node, bytes) {
+      this.bytes -= bytes;
+      for (let n = node; n; n = n.parent) n.bytes -= bytes;
+    }
+    reduce(node, force) {
+      if (node.data) {
+        node.data = null;
+        this.raw -= node.a[15];
+        this.compacted += node.a[15];
+        this.levels[node.level]++;
+        this.release(node, DATA_BYTES);
+        return true;
+      }
+      const l = node.left, r = node.right;
+      if (!l) return false;
+      if (!l.data && !r.data && !l.left && !r.left && node.a[4] >= 0 && (force || this.levels[l.level] > 32)) {
+        this.levels[l.level] -= 2;
+        this.levels[node.level]++;
+        this.release(node, l.bytes + r.bytes);
+        node.left = node.right = null;
+        return true;
+      }
+      return this.reduce(l, force) || this.reduce(r, force);
+    }
+    reserve(need) {
+      while (this.bytes + need > this.limit) {
+        if (this.roots.some(n => this.reduce(n, false)) || this.roots.some(n => this.reduce(n, true))) continue;
+        const old = this.roots.shift();
+        if (!old) throw new Error("Graph budget too small");
+        const forget = n => {
+          if (n.data) this.raw -= n.a[15];
+          else if (!n.left) this.levels[n.level]--;
+          if (n.left) { forget(n.left); forget(n.right); }
+        };
+        forget(old);
+        this.bytes -= old.bytes;
+        this.evicted += old.a[15];
+      }
+    }
+    seal() {
+      if (!this.current) return;
+      this.roots.push(this.current);
+      this.current = null;
+      while (this.roots.length > 1) {
+        const end = this.roots.length;
+        if (this.roots[end - 1].level !== this.roots[end - 2].level) break;
+        this.reserve(NODE_BYTES);
+        if (this.roots.length < 2) break;
+        const r = this.roots.pop(), l = this.roots.pop();
+        const n = {a: combine(l.a, r.a), left: l, right: r, level: l.level + 1, bytes: l.bytes + r.bytes + NODE_BYTES};
+        l.parent = r.parent = n;
+        this.bytes += NODE_BYTES;
+        this.roots.push(n);
+      }
+    }
+    add(t, u, y, segment) {
+      if (this.current && (this.current.a[15] === BLOCK || this.current.a[4] !== segment)) this.seal();
+      if (!this.current) {
+        this.reserve(DATA_BYTES + NODE_BYTES);
+        this.current = {a: new Float64Array(FIELDS), data: new Float64Array(BLOCK * 3), level: 0, bytes: DATA_BYTES + NODE_BYTES};
+        this.bytes += this.current.bytes;
+      }
+      const n = this.current, offset = n.a[15] * 3;
+      n.data[offset] = t; n.data[offset + 1] = u; n.data[offset + 2] = y;
+      sample(n.a, t, u, y, segment);
+      this.raw++;
+    }
+    query(lo, hi, pixels, visit, aggregate = false) {
+      const step = pixels ? (hi - lo) / pixels : 0;
+      const walk = n => {
+        const a = n.a;
+        if (a[1] < lo || a[0] > hi) return;
+        if (!n.data && !n.left) { visit(a, true); return; }
+        if (lo <= a[0] && a[1] <= hi && (aggregate || (pixels && a[1] - a[0] <= step * 2))) { visit(a, false); return; }
+        if (n.left) { walk(n.left); walk(n.right); return; }
+        this.temp.fill(0);
+        let column = -Infinity;
+        for (let i = 0; i < a[15] * 3; i += 3) {
+          const t = n.data[i];
+          if (t < lo || t > hi) continue;
+          const next = pixels ? Math.floor((t - lo) / step) : i;
+          if (this.temp[15] && next !== column) { visit(this.temp, false); this.temp.fill(0); }
+          sample(this.temp, t, n.data[i + 1], n.data[i + 2], a[4]);
+          column = next;
+        }
+        if (this.temp[15]) visit(this.temp, false);
+      };
+      this.roots.forEach(walk);
+      if (this.current) walk(this.current);
+    }
+    range(lo = -Infinity, hi = Infinity) {
+      let value = null;
+      this.query(lo, hi, 0, a => { value = value ? combine(value, a) : a.slice(); }, true);
+      return value;
+    }
+    nearest(t) {
+      let found = null, distance = Infinity;
+      for (const n of [...this.roots, this.current]) {
+        if (!n) continue;
+        const d = Math.max(n.a[0] - t, t - n.a[1], 0);
+        if (d <= distance) { found = n; distance = d; }
+      }
+      if (!found) return null;
+      while (found.left) found = t < (found.left.a[1] + found.right.a[0]) / 2 ? found.left : found.right;
+      if (!found.data) return {a: found.a, summary: true};
+      const data = found.data;
+      let lo = 0, hi = found.a[15];
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (data[mid * 3] <= t) lo = mid + 1; else hi = mid; }
+      let i = Math.max(0, lo - 1);
+      if (lo < found.a[15] && data[lo * 3] - t < t - data[i * 3]) i = lo;
+      const a = sample(new Float64Array(FIELDS), data[i * 3], data[i * 3 + 1], data[i * 3 + 2], found.a[4]);
+      return {a, summary: false};
+    }
+    copy() {
+      const h = new History(this.limit);
+      const clone = n => n && ({a: n.a.slice(), level: n.level, bytes: n.bytes,
+        data: n.data && n.data.slice(), left: clone(n.left), right: clone(n.right)});
+      h.roots = this.roots.map(clone); h.current = clone(this.current); h.bytes = this.bytes;
+      return h;
+    }
+  }
+
   function start(root) {
     const counts = {received: 0, evicted: 0, oversized: 0, parseErrors: 0, transformErrors: 0, configErrors: 0, appendDrops: 0, omitted: 0, clockErrors: 0, restarts: 0};
     let capture;
