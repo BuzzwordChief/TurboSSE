@@ -60,8 +60,10 @@ jobs:
             dist/turbo-sse.min.js.gz
             dist/turbo-sse.css
             dist/turbo-sse.css.gz
-            dist/turbo-sse.h
-            dist/turbo-sse-gzip.h
+            dist/turbo-sse.min.js.h
+            dist/turbo-sse.min.js.gz.h
+            dist/turbo-sse.css.h
+            dist/turbo-sse.css.gz.h
           if-no-files-found: error
           retention-days: 30
 
@@ -92,6 +94,8 @@ jobs:
             dist/turbo-sse.min.js.gz \
             dist/turbo-sse.css \
             dist/turbo-sse.css.gz \
-            dist/turbo-sse.h \
-            dist/turbo-sse-gzip.h \
+            dist/turbo-sse.min.js.h \
+            dist/turbo-sse.min.js.gz.h \
+            dist/turbo-sse.css.h \
+            dist/turbo-sse.css.gz.h \
             --clobber
