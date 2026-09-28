@@ -12,12 +12,18 @@ SIZE_TARGET = 8192
 SIZE_BUDGET = 22528
 
 
-def c_header(contents, compressed=False):
+# Each header is named after the asset it embeds, plus ".h".
+HEADERS = {
+    "turbo-sse.min.js": ("turbo_sse_js", "Uncompressed JavaScript bytes; not NUL-terminated."),
+    "turbo-sse.min.js.gz": ("turbo_sse_js_gz", "Gzip-compressed JavaScript bytes; serve with Content-Encoding: gzip."),
+    "turbo-sse.css": ("turbo_sse_css", "Uncompressed CSS bytes; not NUL-terminated."),
+    "turbo-sse.css.gz": ("turbo_sse_css_gz", "Gzip-compressed CSS bytes; serve with Content-Encoding: gzip."),
+}
+
+
+def c_header(asset, contents, symbol, description):
     """Embed exact asset bytes, without adding a NUL or using C string escaping."""
-    asset = "turbo-sse.min.js.gz" if compressed else "turbo-sse.min.js"
-    symbol = "turbo_sse_js_gz" if compressed else "turbo_sse_js"
-    guard = "TURBO_SSE_GZIP_H" if compressed else "TURBO_SSE_H"
-    description = "Gzip-compressed JavaScript bytes; serve with Content-Encoding: gzip." if compressed else "Uncompressed JavaScript bytes; not NUL-terminated."
+    guard = re.sub(r"[^A-Z0-9]", "_", asset.upper()) + "_H"
     rows = [
         "    " + ", ".join("0x{:02x}".format(byte) for byte in contents[offset:offset + 12]) + ","
         for offset in range(0, len(contents), 12)
@@ -56,10 +62,9 @@ def build(check=False):
         artifacts[name] = contents
         artifacts[name + ".gz"] = zipped
         print("{}: {} bytes minified, {} bytes gzip".format(name, len(contents), len(zipped)))
-    artifacts["turbo-sse.h"] = c_header(outputs["turbo-sse.min.js"])
-    artifacts["turbo-sse-gzip.h"] = c_header(artifacts["turbo-sse.min.js.gz"], compressed=True)
-    print("turbo-sse.h: embeds {} JavaScript bytes".format(len(outputs["turbo-sse.min.js"])))
-    print("turbo-sse-gzip.h: embeds {} gzip bytes".format(len(artifacts["turbo-sse.min.js.gz"])))
+    for asset, (symbol, description) in HEADERS.items():
+        artifacts[asset + ".h"] = c_header(asset, artifacts[asset], symbol, description)
+        print("{}.h: embeds {} bytes as {}".format(asset, len(artifacts[asset]), symbol))
     print("JavaScript source: {} bytes".format(len(javascript.encode("utf-8"))))
     print("Combined gzip: {} bytes (target {}, regression ceiling {})".format(total, SIZE_TARGET, SIZE_BUDGET))
     if total > SIZE_BUDGET:

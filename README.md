@@ -364,16 +364,18 @@ After `destroy()`, `stats()` returns `null` and a later `init()` starts a fresh 
 
 ## Serving from firmware
 
-The build writes two C headers for the script. Include one in the source file that serves it, so firmware keeps a single copy.
+The build writes C headers for the script and stylesheet, each named after the asset it embeds plus `.h`. Include one in the source file that serves it, so firmware keeps a single copy.
 
 | Header | Symbols | Serve with |
 | --- | --- | --- |
-| `dist/turbo-sse.h` | `turbo_sse_js`, `turbo_sse_js_len` | `Content-Type: text/javascript; charset=utf-8` |
-| `dist/turbo-sse-gzip.h` | `turbo_sse_js_gz`, `turbo_sse_js_gz_len` | The same type plus `Content-Encoding: gzip` |
+| `dist/turbo-sse.min.js.h` | `turbo_sse_js`, `turbo_sse_js_len` | `Content-Type: text/javascript; charset=utf-8` |
+| `dist/turbo-sse.min.js.gz.h` | `turbo_sse_js_gz`, `turbo_sse_js_gz_len` | The same type plus `Content-Encoding: gzip` |
+| `dist/turbo-sse.css.h` | `turbo_sse_css`, `turbo_sse_css_len` | `Content-Type: text/css; charset=utf-8` |
+| `dist/turbo-sse.css.gz.h` | `turbo_sse_css_gz`, `turbo_sse_css_gz_len` | The same type plus `Content-Encoding: gzip` |
 
-Each header defines a `const unsigned char[]` with the exact bytes of `turbo-sse.min.js` or `turbo-sse.min.js.gz`, and a `const size_t` length, both with internal linkage. Send exactly the given length; the arrays have no trailing NUL, and the gzip data contains NUL bytes, so never use `strlen`. With the gzip header the browser decompresses; the device compresses nothing at runtime. When sending `Content-Length`, use the compressed length. The headers have distinct symbols and include guards, so both can be used together. Adapt the storage placement to your platform if needed.
+Each header defines a `const unsigned char[]` with the exact bytes of its asset, and a `const size_t` length, both with internal linkage. Send exactly the given length; the arrays have no trailing NUL, and the gzip data contains NUL bytes, so never use `strlen`. With a gzip header the browser decompresses; the device compresses nothing at runtime. When sending `Content-Length`, use the compressed length. The headers have distinct symbols and include guards, so they can be used together. Adapt the storage placement to your platform if needed.
 
-The stylesheet is served as a file; `dist/turbo-sse.css.gz` is its precompressed variant. Serve any `.gz` asset with its original content type plus `Content-Encoding: gzip`, rather than linking to the `.gz` file directly.
+When serving the `dist/` files from a file system instead, serve any `.gz` asset with its original content type plus `Content-Encoding: gzip`, rather than linking to the `.gz` file directly.
 
 ## Development
 
@@ -390,9 +392,9 @@ PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright" .venv39/bin/python -m playwright ins
 .venv39/bin/python tools/build.py --check
 ```
 
-The build writes minified assets, deterministic `.gz` variants and both C headers to `dist/`, which is not committed. It reports the combined gzip size against a soft 8 KiB target and fails above the 22 KiB regression ceiling. `--check` fails if any generated file is stale.
+The build writes minified assets, deterministic `.gz` variants and the C headers to `dist/`, which is not committed. It reports the combined gzip size against a soft 8 KiB target and fails above the 22 KiB regression ceiling. `--check` fails if any generated file is stale.
 
-The tests run real localhost SSE endpoints in Chromium, Firefox and WebKit, covering rendering, transforms, capture limits, downloads, reconnects, watchdogs, plot interaction, exports and the demo page. Header tests compile C99 and C++11 programs against both headers, and need `cc` and `c++`. While developing:
+The tests run real localhost SSE endpoints in Chromium, Firefox and WebKit, covering rendering, transforms, capture limits, downloads, reconnects, watchdogs, plot interaction, exports and the demo page. Header tests compile C99 and C++11 programs against all headers, and need `cc` and `c++`. While developing:
 
 ```sh
 .venv39/bin/python -m unittest tests.test_browser.ChromiumTests -v   # one engine
@@ -423,9 +425,9 @@ The **Build minified library** workflow runs on pushes, pull requests, published
 
 - `turbo-sse.min.js` and `turbo-sse.css`
 - their `.gz` variants
-- `turbo-sse.h` and `turbo-sse-gzip.h`
+- `turbo-sse.min.js.h`, `turbo-sse.min.js.gz.h`, `turbo-sse.css.h` and `turbo-sse.css.gz.h`
 
-Publishing a GitHub Release attaches the same six files to it; pushing a tag alone only produces the artifact. The build job has read-only permissions, and only the release upload job can write. To attach files to an existing release, run the workflow manually from the default branch with **release_tag** set to its tag. It checks out and rebuilds that tag, which must already contain the build tooling, and replaces assets with the same names without moving the tag. Leave **release_tag** empty for a normal build.
+Publishing a GitHub Release attaches the same eight files to it; pushing a tag alone only produces the artifact. The build job has read-only permissions, and only the release upload job can write. To attach files to an existing release, run the workflow manually from the default branch with **release_tag** set to its tag. It checks out and rebuilds that tag, which must already contain the build tooling, and replaces assets with the same names without moving the tag. Leave **release_tag** empty for a normal build.
 
 ## Validation
 
