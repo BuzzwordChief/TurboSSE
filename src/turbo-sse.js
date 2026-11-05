@@ -282,17 +282,21 @@
     }
   }
 
-  const palette = ["#005996", "#b00040", "#208020", "#6020a0", "#c07820", "#20a0a0"];
+  // Series colors for thin lines on black; every pair stays distinct with red-green color blindness.
+  // Red and orange are left to restart markers and the selection.
+  const palette = ["#fcd936", "#46d8fc", "#f85fbd", "#55cd7a", "#749ff9", "#995df7"];
+  const SMALL = "bold 10px DIN Alternate, Bahnschrift, sans-serif", LARGE = SMALL.replace(10, 11);
   const format = value => {
     if (!Number.isFinite(value)) return "—";
     const magnitude = Math.abs(value);
     return magnitude && (magnitude >= 1e6 || magnitude < .001) ? value.toExponential(4).replace(/\.?0+e/, "e") : String(Number(value.toPrecision(5)));
   };
   const put = (node, text) => { if (node.textContent !== text) node.textContent = text; };
-  // Discrete lanes. A well-mixed hash of a value's text picks two of 24 colors: eight hue families near the page's
-  // own palette, each in three pastel tints that keep black text readable. The second color always has another hue.
+  // Discrete lanes. A well-mixed hash of a value's text picks two of 24 colors: eight hue families, each in three
+  // dark tints that keep white text readable, outlined in a bright tone of the hue. No family is red or orange.
+  // The second color always has another hue.
   // A value takes its first color unless another value in the same lane already has that hue or that color.
-  const LANE = 20, HUES = [0, 35, 60, 120, 180, 215, 270, 320];
+  const LANE = 20, HUES = [55, 95, 135, 170, 205, 245, 285, 325];
   const choices = text => {
     let h = 2166136261;
     for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
@@ -300,7 +304,7 @@
     const first = h % 24;
     return [first, (h >>> 16) % 3 * 8 + (first % 8 + 1 + (h >>> 20) % 7) % 8];
   };
-  const shade = (slot, fill) => `hsl(${HUES[slot % 8]},${fill ? "80%," + [88, 78, 64][slot >> 3] : "45%,30"}%)`;
+  const shade = (slot, fill) => `hsl(${HUES[slot % 8]},${fill ? "70%," + [12, 20, 28][slot >> 3] : "90%,70"}%)`;
   // Shorten text with an ellipsis to fit a width in pixels; empty when nothing fits.
   const clip = (ctx, text, room) => {
     const width = ctx.measureText(text).width, keep = Math.floor(text.length * room / width) - 1;
@@ -344,6 +348,9 @@
       const header = make("header", "", undefined, this.element);
       make("strong", "", title, header);
       make("span", "", [...new Set(sources.map(c => c.unit).filter(Boolean))].join(", "), header);
+      // The header button enlarges the plot to fill the window; it then reads Reduce and brings the plot back.
+      this.full = make("button", "", "Enlarge", header); this.full.type = "button"; make("kbd", "", "E", this.full);
+      listen(this.full, "click", () => hooks.enlarge(this));
       // The one-row band above the data holds the key legend on the left and the plot controls on the right.
       // A legend that does not fit is cut off and fades out; a hidden full copy appears while it is hovered.
       this.tools = make("div", "turbo-sse-tools");
@@ -367,12 +374,12 @@
       this.canvas = make("canvas", "", undefined, this.area);
       this.canvas.tabIndex = 0;
       this.canvas.setAttribute("role", "img");
-      this.canvas.setAttribute("aria-label", this.element.getAttribute("aria-label") + ". Click to interact. " + [...hint.children].map(e => e.textContent).join("; ") + "; L live; F fit.");
+      this.canvas.setAttribute("aria-label", this.element.getAttribute("aria-label") + ". Click to interact. " + [...hint.children].map(e => e.textContent).join("; ") + "; L live; F fit; E enlarge.");
       // The gutter fits the unit and the lane names. Lanes add rows below the numeric area, or make up the whole plot.
-      const pen = this.canvas.getContext("2d"); pen.font = "10px arial, helvetica, sans-serif";
+      const pen = this.canvas.getContext("2d"); pen.font = SMALL;
       this.unit = this.series.length ? this.series[0].unit : "";
       this.need = Math.ceil(Math.max(18, pen.measureText(this.unit).width + 8, ...this.lanes.map(c => Math.min(120, pen.measureText(c.label).width) + 10)));
-      if (this.lanes.length) this.area.style.height = this.series.length ? `calc(var(--turbo-sse-height, 220px) + ${this.lanes.length * LANE}px)` : 60 + this.lanes.length * LANE + "px";
+      if (this.lanes.length) this.area.style.height = this.series.length ? `calc(var(--turbo-sse-height, 220px) + ${this.lanes.length * LANE}px)` : (this.area.style.flex = "none", 60 + this.lanes.length * LANE + "px");
       this.cursor = make("div", "turbo-sse-cursor", undefined, this.area);
       this.horizontal = make("div", "turbo-sse-cross-y", undefined, this.area);
       this.selection = make("div", "turbo-sse-selection", undefined, this.area);
@@ -456,10 +463,12 @@
       listen(document, "keydown", event => {
         if (!this.active || event.ctrlKey || event.metaKey || event.altKey) return;
         const key = event.key.toLowerCase(), span = view.hi - view.lo, center = view.cursor === null ? (view.lo + view.hi) / 2 : view.cursor;
-        if (["arrowleft", "arrowright", "+", "=", "-", "a", "b", "l", "f", "escape"].includes(key)) event.preventDefault();
+        if (["arrowleft", "arrowright", "+", "=", "-", "a", "b", "l", "f", "e", "escape"].includes(key)) event.preventDefault();
         if (key === "arrowleft" || key === "arrowright") this.setRange(view.lo + span * (key === "arrowleft" ? -.1 : .1), view.hi + span * (key === "arrowleft" ? -.1 : .1));
         if (["+", "=", "-"].includes(key)) this.zoom(center, key === "-" ? 1.25 : .8);
         if (key === "a" || key === "b") { if (view.live) this.live(false); view[key] = this.snap(center); }
+        // Esc clears the markers or cancels a drag; with nothing to clear, it leaves the enlarged view.
+        if (key === "e" || key === "escape" && !this.drag && view.a === null && view.b === null && this.element.hasAttribute("data-max")) hooks.enlarge(this);
         if (key === "escape") { this.cancel(); view.a = view.b = null; }
         if (key === "l") this.live(!view.live);
         if (key === "f") this.controls.querySelector("[data-action=Fit]").click();
@@ -578,8 +587,8 @@
       const scale = Math.max(Math.abs(this.yMin), Math.abs(this.yMax), Number.MIN_VALUE);
       const y = v => T + (this.yMax / scale - v / scale) / (this.yMax / scale - this.yMin / scale) * this.height;
       const ink = getComputedStyle(this.area).color;
-      ctx.font = "10px arial, helvetica, sans-serif"; ctx.fillStyle = ctx.strokeStyle = ink; ctx.lineWidth = 1;
-      const rule = (x0, y0, x1, y1, faint) => { ctx.globalAlpha = faint ? .12 : 1; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); ctx.globalAlpha = 1; };
+      ctx.font = SMALL; ctx.fillStyle = ctx.strokeStyle = ink; ctx.lineWidth = 1;
+      const rule = (x0, y0, x1, y1, faint) => { ctx.globalAlpha = faint ? .3 : 1; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); ctx.globalAlpha = 1; };
       const L = this.left = Math.max(this.need, g.gutter || 0), end = w - 16;
       this.width = Math.max(1, w - L - 16);
       const band = L + 2 + "px"; if (this.tools.style.left !== band) this.tools.style.left = band;
@@ -606,12 +615,12 @@
       ctx.save(); ctx.beginPath(); ctx.rect(L, T, this.width, this.height); ctx.clip();
       for (const c of this.series) {
         if (this.hidden.has(c)) continue;
-        const color = palette[(c.id - 1) % palette.length]; ctx.strokeStyle = ctx.fillStyle = color; ctx.lineWidth = 1.3; ctx.beginPath();
+        const color = palette[(c.id - 1) % palette.length]; ctx.strokeStyle = ctx.fillStyle = color; ctx.lineWidth = 1.5; ctx.beginPath();
         let connected = false;
         c.history.query(g.lo, g.hi, Math.min(2048, this.width), (a, summary) => {
           if (!a[5]) { connected = false; return; }
           if (summary || a[14]) {
-            ctx.stroke(); ctx.globalAlpha = .12;
+            ctx.stroke(); ctx.globalAlpha = .25;
             ctx.fillRect(this.x(a[0]), y(a[7]), Math.max(1, this.x(a[1]) - this.x(a[0])), Math.max(1, y(a[6]) - y(a[7])));
             ctx.globalAlpha = 1; ctx.beginPath(); ctx.moveTo(this.x(a[0]), y(a[6])); ctx.lineTo(this.x(a[1]), y(a[6]));
             ctx.moveTo(this.x(a[0]), y(a[7])); ctx.lineTo(this.x(a[1]), y(a[7])); ctx.stroke(); ctx.beginPath(); connected = false;
@@ -632,11 +641,11 @@
       ctx.save(); ctx.lineWidth = 1; ctx.textBaseline = "middle";
       this.lanes.forEach((c, i) => {
         const top = Y + i * LANE + 2, mid = top + 8, bottom = top + 16, color = palette[(c.id - 1) % palette.length];
-        ctx.font = "10px arial, helvetica, sans-serif"; ctx.textAlign = "right"; ctx.fillStyle = ctx.strokeStyle = ink;
+        ctx.font = SMALL; ctx.textAlign = "right"; ctx.fillStyle = ctx.strokeStyle = ink;
         ctx.fillText(clip(ctx, c.label, L - 10), L - 6, mid); rule(L, top - 1.5, end, top - 1.5, true);
         if (this.hidden.has(c)) return;
         ctx.save(); ctx.beginPath(); ctx.rect(L + 1, top - 1, this.width, LANE - 2); ctx.clip();
-        ctx.font = "11px arial, helvetica, sans-serif"; ctx.textAlign = "center";
+        ctx.font = LARGE; ctx.textAlign = "center";
         let start = null, value = -1;
         const close = t => {
           const x0 = Math.max(L - 4, this.x(start)), x1 = Math.min(end + 4, this.x(t)), text = c.values[value];
@@ -644,19 +653,19 @@
           if (c.lane == "logic") {
             const on = text == "1", level = on ? top + .5 : bottom - .5;
             ctx.strokeStyle = ctx.fillStyle = color;
-            if (on) { ctx.globalAlpha = .15; ctx.fillRect(x0, top, x1 - x0, 16); ctx.globalAlpha = 1; }
+            if (on) { ctx.globalAlpha = .25; ctx.fillRect(x0, top, x1 - x0, 16); ctx.globalAlpha = 1; }
             ctx.beginPath(); ctx.moveTo(x0, top); ctx.lineTo(x0, bottom); ctx.moveTo(x0, level); ctx.lineTo(x1, level); ctx.stroke();
             return;
           }
           const slant = Math.min(3, (x1 - x0) / 2), a = Math.max(x0, L), b = Math.min(x1, end), label = clip(ctx, text, b - a - 8);
           ctx.beginPath(); ctx.moveTo(x0, mid); ctx.lineTo(x0 + slant, top); ctx.lineTo(x1 - slant, top); ctx.lineTo(x1, mid); ctx.lineTo(x1 - slant, bottom); ctx.lineTo(x0 + slant, bottom); ctx.closePath();
           ctx.fillStyle = shade(c.slots[value], 1); ctx.fill(); ctx.strokeStyle = shade(c.slots[value]); ctx.stroke();
-          if (label) { ctx.fillStyle = "#000"; ctx.fillText(label, (a + b) / 2, mid); }
+          if (label) { ctx.fillStyle = "#fff"; ctx.fillText(label, (a + b) / 2, mid); }
         };
         const busy = (t0, t1, n, summary) => {
           const x0 = this.x(t0), x1 = Math.max(x0 + 2, this.x(t1)), label = clip(ctx, n + " changes" + (summary ? ", summarized" : ""), x1 - x0 - 8);
-          ctx.fillStyle = "#d8d8d8"; ctx.strokeStyle = "#808080"; ctx.fillRect(x0, top, x1 - x0, 16); ctx.strokeRect(x0 + .5, top + .5, x1 - x0 - 1, 15);
-          if (label) { ctx.fillStyle = "#000"; ctx.fillText(label, (x0 + x1) / 2, mid); }
+          ctx.fillStyle = "#383838"; ctx.strokeStyle = "#969696"; ctx.fillRect(x0, top, x1 - x0, 16); ctx.strokeRect(x0 + .5, top + .5, x1 - x0 - 1, 15);
+          if (label) { ctx.fillStyle = "#fff"; ctx.fillText(label, (x0 + x1) / 2, mid); }
         };
         // The value in effect at the left edge comes from the last change before it.
         const p = c.history.nearest(g.lo, true);
@@ -672,12 +681,12 @@
       ctx.restore();
       const d = this.drag, z = d && this.mode == "Zoom";
       ctx.save(); ctx.beginPath(); ctx.rect(L, T, this.width, this.span); ctx.clip();
-      ctx.strokeStyle = ctx.fillStyle = "#d0021b"; ctx.setLineDash([4, 3]);
+      ctx.strokeStyle = ctx.fillStyle = "#ff3b30"; ctx.setLineDash([4, 3]);
       for (const marker of this.hooks.restarts()) if (marker.time >= g.lo && marker.time <= g.hi) {
         const x = this.x(marker.time); ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, B); ctx.stroke(); ctx.fillText("≈ restart", x + 4, T + 12);
       }
       // Label each marker on the outer side of the measured interval, at the bottom of the numeric area.
-      ctx.fillStyle = "#b07000"; ctx.font = "bold 11px arial, sans-serif";
+      ctx.fillStyle = "#ff7a00"; ctx.font = LARGE;
       if (!z) for (const [name, t, other] of [["A", g.a, g.b], ["B", g.b, g.a]]) if (t !== null) {
         const x = this.x(t), room = ctx.measureText(name).width + 3;
         const left = other !== null && t < other ? x - room > L : x + room > end;
@@ -685,7 +694,8 @@
       }
       ctx.restore(); ctx.setLineDash([]);
       if (!retained && !this.lanes.some(c => c.last >= 0)) { ctx.textAlign = "center"; ctx.fillStyle = ink; ctx.fillText("Waiting for valid data", L + this.width / 2, h / 2); }
-      this.liveBox.checked = g.live;
+      // The header lamp shows the live state while the controls are hidden.
+      this.liveBox.checked = g.live; this.element.toggleAttribute("data-live", g.live);
       this.baseReadout = (g.live ? "Live" : "Inspecting") + ` · ${format(g.lo)}–${format(g.hi)} s · ${retained} samples` +
         (this.sources.some(c => c.history.compacted) ? " · older history summarized" : "") +
         (this.sources.some(c => c.history.evicted) ? " · oldest coverage expired" : "");
@@ -740,7 +750,7 @@
         }));
       }
     }
-    destroy() { this.abort.abort(); this.observer.disconnect(); this.element.remove(); }
+    destroy() { this.abort.abort(); this.observer.disconnect(); this.element.remove(); this.host.style.minHeight = ""; }
   }
 
   function start(root) {
@@ -766,7 +776,8 @@
     const restarts = [];
     let graphBudget = 33554432, clockBudget = 32768, serial = 0;
     let channels = new Map(), plots = new Map(), groups = new Map();
-    let graphDirty = false, lastDraw = -Infinity;
+    let graphDirty = false, lastDraw = -Infinity, big = null, saved = 0;
+    const off = new AbortController(), on = (name, fn) => addEventListener(name, fn, {signal: off.signal});
     const bar = document.createElement("div");
     bar.className = "turbo-sse-bar";
     bar.innerHTML = '<span class="turbo-sse-status" role="status" aria-live="polite"></span><span class="turbo-sse-counts"></span><output></output><button type="button" class="turbo-sse-export">Export All</button><button type="button" class="turbo-sse-retry" hidden>Retry</button>';
@@ -848,6 +859,28 @@
       if (Array.from(groups.values()).some(g => g.live)) invalidate();
     }
 
+    // One plot at a time can be enlarged to fill the window below the topbar. A history entry holds it, so the
+    // browser's Back button returns to the page and Forward enlarges the plot again.
+    function enlarge(plot) {
+      if (plot && plot === big) return history.back();
+      if (plot) history.pushState({turboSSE: Array.from(plots.values()).indexOf(plot) + 1}, "");
+      const n = (history.state || 0).turboSSE;
+      let i = 0;
+      big = null;
+      for (const p of plots.values()) {
+        const max = ++i === n, e = p.element;
+        if (max) big = p;
+        if (max !== e.hasAttribute("data-max")) {
+          // The plot leaves the page flow; its place keeps its height, and the page its scroll position.
+          p.host.style.minHeight = max ? p.host.getBoundingClientRect().height + "px" : "";
+          e.toggleAttribute("data-max", max);
+        }
+        e.style.top = max ? Math.max(0, bar.getBoundingClientRect().bottom) + "px" : "";
+        put(p.full.firstChild, max ? "Reduce" : "Enlarge");
+      }
+      invalidate();
+    }
+
     function fragment(element, text, html) {
       if (!html) return document.createTextNode(text);
       const range = document.createRange();
@@ -905,7 +938,7 @@
         for (const g of groups.values()) g.gutter = 0;
         for (const p of plots.values()) p.view.gutter = Math.max(p.view.gutter, p.need);
         for (const p of plots.values()) {
-          if (p.failed) continue;
+          if (p.failed || big && p !== big) continue;  // Plots behind an enlarged one rest.
           try { p.draw(); }
           catch (error) { counts.graphErrors++; p.failed = true; p.readout.textContent = "Graph error: " + error.message; }
         }
@@ -1093,14 +1126,14 @@
           let plot = plots.get(host);
           if (plot && (plot.signature !== signature || plot.view !== view)) { plot.destroy(); plot = null; }
           if (!plot) plot = new Plot(host, series, view, {invalidate, extent, restarts: () => restarts,
-            cursor: g => { for (const p of plots.values()) if (p.view === g) p.inspect(); }, export: showExports, now: () => (performance.now() - started) / 1000});
+            cursor: g => { for (const p of plots.values()) if (p.view === g) p.inspect(); }, export: showExports, enlarge, now: () => (performance.now() - started) / 1000});
           plot.signature = signature;
           nextPlots.set(host, plot);
         } catch (error) { configError(error); }
       }
       for (const [host, plot] of plots) if (!nextPlots.has(host)) plot.destroy();
       plots = nextPlots; groups = nextGroups; elements = next;
-      invalidate(); counters();
+      enlarge(); counters();
     }
 
     function closeSource() {
@@ -1198,6 +1231,7 @@
       const url = URL.createObjectURL(new Blob([csv], {type: "text/csv;charset=utf-8"}));
       const link = document.createElement("a"); link.href = url; link.download = "sse-" + stamp() + ".csv"; link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
+      saved = counts.received;
       return csv;
     }
 
@@ -1205,7 +1239,7 @@
       if (exportBusy) return;
       closeExports();
       exportBusy = exportButton.disabled = true;
-      const created = new Date().toISOString(), version = exportVersion, prefix = created.replace(/[:.]/g, "-"), lo = interval ? interval[0] : -Infinity, hi = interval ? interval[1] : Infinity;
+      const created = new Date().toISOString(), version = exportVersion, mark = counts.received, prefix = created.replace(/[:.]/g, "-"), lo = interval ? interval[0] : -Infinity, hi = interval ? interval[1] : Infinity;
       const limit = Math.min(268435456, Math.max(8388608, graphBudget * 8 + capture.budget * 4));
       note.textContent = "Preparing export…";
       const snapshots = [], entries = [], lines = [];
@@ -1305,6 +1339,7 @@
           exportURLs.push(url); link.href = url; link.download = "sse-" + prefix + ".zip"; link.click();
           setTimeout(() => URL.revokeObjectURL(url), 60000);
           note.textContent = "";
+          if (!selected) saved = mark;
         }
       } catch (error) {
         if (valid()) note.textContent = error.message;
@@ -1315,6 +1350,10 @@
     const retry = () => connect(true);
     exportButton.addEventListener("click", exportClick);
     retryButton.addEventListener("click", retry);
+    on("popstate", () => enlarge());
+    on("resize", () => enlarge());
+    // Leaving the page loses everything received since the last Export All, so the browser asks first.
+    on("beforeunload", event => { if (counts.received > saved) { event.preventDefault(); event.returnValue = true; } });
     try {
       capture = new Ring(number(root, "buffer-events", 10000, 1), number(root, "buffer-bytes", 2097152, 1));
       timeout = number(root, "timeout", 0, 0);
@@ -1334,6 +1373,7 @@
       refresh, exportCSV, stats,
       destroy() {
         dead = true;
+        off.abort();
         closeSource();
         clearTimeout(retryTimer);
         clearInterval(counterTimer);

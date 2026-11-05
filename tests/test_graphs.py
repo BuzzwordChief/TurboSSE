@@ -352,7 +352,7 @@ class GraphCases:
         # alone in another lane, S3 keeps its first color.
         self.assertNotEqual(colors['#a', 'S2'], colors['#a', 'S3'])
         self.assertEqual(colors['#b', 'S3'], colors['#a', 'S2'])
-        self.assertEqual(colors['#a', 'S2'], 'hsl(215,45%,30%)')
+        self.assertEqual(colors['#a', 'S2'], 'hsl(245,90%,70%)')
 
     def test_logic_lane_levels_and_invalid_values(self):
         self.open('<div id="p" data-sse-graph data-sse-event="p" data-sse-discrete="logic" data-sse-label="Pump"></div>'
@@ -418,9 +418,92 @@ class GraphCases:
         self.page.mouse.move(legend['x'] + 40, legend['y'] + legend['height'] / 2)
         expect(full).to_be_visible()
         self.assertGreater(full.bounding_box()['height'], legend['height'])
+        # The full legend lies above the toolbar, whose masked icons would otherwise show through it.
+        self.assertEqual(full.evaluate('e => getComputedStyle(e).zIndex'), '1')
         self.assertEqual(self.page.evaluate('document.querySelector("#n .turbo-sse-tools").offsetHeight'), height)
         self.page.mouse.move(box['x'] + 300, box['y'] + 150)
         expect(full).to_be_hidden()
+
+    def test_enlarged_plot_fills_the_window_and_follows_history(self):
+        self.open('<p>Before</p><div id="a" data-sse-graph data-sse-event="v"></div><div id="b" data-sse-graph data-sse-event="w"></div>'
+                  '<div id="l" data-sse-graph data-sse-event="s" data-sse-discrete></div><div style="height:2000px"></div>')
+        for i in range(8):
+            self.case.emit('v', str(i)); self.case.emit('w', str(i)); self.case.emit('s', 'S' + str(i % 2)); self.page.wait_for_timeout(15)
+        self.received(24)
+        plot, button = self.page.locator('#b .turbo-sse-plot'), self.page.locator('#b .turbo-sse-plot > header button')
+        box = '''id => { const r = document.querySelector(id + " .turbo-sse-plot").getBoundingClientRect(), bar = document.querySelector(".turbo-sse-bar").getBoundingClientRect();
+            const box = {top: r.top - bar.bottom, left: r.left, right: document.documentElement.clientWidth - r.right, bottom: innerHeight - r.bottom,
+                    canvas: document.querySelector(id + " canvas").clientHeight, page: document.documentElement.scrollHeight, y: scrollY};
+            for (const key in box) box[key] = Math.round(box[key]);
+            return box; }'''
+        self.page.evaluate('scrollTo(0, 150)')
+        small = self.page.evaluate(box, '#b')
+        expect(button).to_have_text('EnlargeE')
+        button.click()
+        expect(plot).to_have_attribute('data-max', '')
+        expect(button).to_have_text('ReduceE')
+        self.frames()
+        big = self.page.evaluate(box, '#b')
+        # The plot fills the window below the topbar, and its plot area takes the spare height.
+        self.assertEqual([big[edge] for edge in ('top', 'left', 'right', 'bottom')], [0, 0, 0, 0], big)
+        self.assertGreater(big['canvas'], small['canvas'] * 1.5, big)
+        # The page behind keeps its height and scroll position and does not scroll; the other plots are out of reach.
+        self.assertEqual((big['page'], big['y']), (small['page'], small['y']))
+        self.assertEqual(self.page.evaluate('getComputedStyle(document.documentElement).overflowY'), 'hidden')
+        expect(self.page.locator('#a .turbo-sse-plot')).to_be_hidden()
+        # The browser's Back button returns to the page, and Forward enlarges the plot again.
+        self.assertEqual(self.page.evaluate('history.state.turboSSE'), 2)
+        self.page.evaluate('history.back()')
+        expect(plot).not_to_have_attribute('data-max', '')
+        expect(button).to_have_text('EnlargeE')
+        expect(self.page.locator('#a .turbo-sse-plot')).to_be_visible()
+        self.frames()
+        self.assertEqual(self.page.evaluate(box, '#b'), small)
+        self.page.evaluate('history.forward()')
+        expect(plot).to_have_attribute('data-max', '')
+        # Esc first clears the markers and then leaves the enlarged view; E enlarges and returns.
+        self.page.keyboard.press('a'); self.page.keyboard.press('Escape')
+        expect(self.page.locator('#b .turbo-sse-selection')).to_be_hidden()
+        expect(plot).to_have_attribute('data-max', '')
+        self.page.keyboard.press('Escape')
+        expect(plot).not_to_have_attribute('data-max', '')
+        self.page.keyboard.press('e')
+        expect(plot).to_have_attribute('data-max', '')
+        # A refresh keeps the plot enlarged; the button returns to the page.
+        self.page.evaluate('TurboSSE.refresh()')
+        expect(plot).to_have_attribute('data-max', '')
+        button.click()
+        expect(plot).not_to_have_attribute('data-max', '')
+        # A plot of lanes only fills the window too, but keeps the height of its lanes.
+        self.page.locator('#l .turbo-sse-plot > header button').click()
+        expect(self.page.locator('#l .turbo-sse-plot')).to_have_attribute('data-max', '')
+        self.frames()
+        lanes = self.page.evaluate(box, '#l')
+        self.assertEqual((lanes['canvas'], lanes['bottom']), (80, 0), lanes)
+        # Destroying the runtime while a plot is enlarged leaves the page as it was.
+        self.page.evaluate('TurboSSE.destroy()')
+        self.assertEqual(self.page.evaluate('[document.querySelector("#l").style.minHeight, getComputedStyle(document.documentElement).overflowY]'), ['', 'visible'])
+
+    def test_leaving_with_unsaved_data_asks_first(self):
+        self.open('<div id="a" data-sse-graph data-sse-event="v"></div>')
+        asks = '''() => { const e = new Event("beforeunload", {cancelable: true}); dispatchEvent(e); return e.defaultPrevented; }'''
+        self.assertFalse(self.page.evaluate(asks))  # Nothing has been received yet.
+        self.case.emit('v', '1'); self.received(1)
+        self.assertTrue(self.page.evaluate(asks))
+        # Export view saves one plot's interval only; Export All saves everything received so far.
+        box = self.page.locator('#a canvas').bounding_box()
+        self.page.mouse.click(box['x'] + 200, box['y'] + 100)
+        self.export_files(self.page.locator('#a [data-action="Export view"]').click)
+        self.assertTrue(self.page.evaluate(asks))
+        self.export_files()
+        self.assertFalse(self.page.evaluate(asks))
+        self.case.emit('v', '2'); self.received(2)
+        self.assertTrue(self.page.evaluate(asks))
+        self.raw_rows()
+        self.assertFalse(self.page.evaluate(asks))
+        self.case.emit('v', '3'); self.received(3)
+        self.page.evaluate('TurboSSE.destroy()')
+        self.assertFalse(self.page.evaluate(asks))
 
     def test_measuring_keeps_the_page_layout(self):
         self.open('<div id="a" data-sse-graph data-sse-sync="s"><span data-sse-event="v"></span><span data-sse-event="w"></span></div>'

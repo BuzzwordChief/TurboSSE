@@ -2,18 +2,18 @@
 
 [![Build minified library](https://github.com/BuzzwordChief/TurboSSE/actions/workflows/build.yml/badge.svg)](https://github.com/BuzzwordChief/TurboSSE/actions/workflows/build.yml)
 
-Debug pages for embedded devices, driven by Server-Sent Events. Bind events to values and logs with HTML attributes, plot numeric series and discrete signals on synchronized scientific graphs with A/B measurements, and download everything as one ZIP. It is one JavaScript file and one stylesheet, about 20 KiB gzipped together, with no runtime dependencies, so a device can serve it straight from firmware.
+Debug pages for embedded devices, driven by Server-Sent Events. Bind events to values and logs with HTML attributes, plot numeric series and discrete signals on synchronized scientific graphs with A/B measurements, and download everything as one ZIP. It is one JavaScript file and one stylesheet, about 22 KiB gzipped together, with no runtime dependencies, so a device can serve it straight from firmware.
 
 ![The demo page: connection bar, a table of real-time values, and three synchronized plots with an A/B measurement](docs/screenshot.png)
 
 ## Features
 
 - **Attribute bindings.** `data-sse-event`, JSON Pointer selection and your own transform functions update text, trusted HTML or append-only logs. The page needs no framework or build step.
-- **Scientific plots.** Canvas time series with synchronized windows and cursors, pan, zoom, range zoom and live follow. A/B measurements give count, extrema, peak-to-peak, mean, RMS, standard deviation, Δy and slope.
+- **Scientific plots.** Canvas time series with synchronized windows and cursors, pan, zoom, range zoom and live follow; any plot enlarges to fill the window. A/B measurements give count, extrema, peak-to-peak, mean, RMS, standard deviation, Δy and slope.
 - **Discrete lanes.** States, registers and flags draw as timing-diagram lanes under a curve or on their own, with distinct, stable colors per value and measurements of dwell time and changes.
 - **Bounded history.** Plots keep exact samples while their memory budget allows, then summarize older data without losing counts, extrema, means or deviations.
 - **One-click exports.** Every export downloads one ZIP with the original events, one CSV per series and an `export.txt` describing the snapshot.
-- **Connection awareness.** A sticky topbar shows connection state, estimated device uptime and capture counters. Plots mark estimated device restarts, and stalled streams reconnect with a resume cursor.
+- **Connection awareness.** A sticky topbar shows connection state, estimated device uptime and capture counters. Plots mark estimated device restarts, stalled streams reconnect with a resume cursor, and the browser asks before you leave with data you have not exported.
 - **Classless styling.** The stylesheet also styles plain HTML such as tables, details, headings and columns, so a device page needs no classes or CSS of its own.
 - **Firmware friendly.** The build emits C headers containing the minified script, plain or gzip-compressed.
 
@@ -135,7 +135,7 @@ A graph element without its own event binding overlays the series inside it. Gra
 
 ### Controls
 
-A plot is inactive until you click it or move keyboard focus into it. Hovering an inactive plot shows "Click to interact", and the wheel scrolls the page as usual. The first click only activates the plot; clicking elsewhere or tabbing away deactivates it.
+A plot is inactive until you click it or move keyboard focus into it. Hovering an inactive plot shows "Click to interact", and the wheel scrolls the page as usual. The first click only activates the plot, which then wears an orange frame and header; clicking elsewhere or tabbing away deactivates it.
 
 | Action | Pointer | Keyboard |
 | --- | --- | --- |
@@ -143,24 +143,26 @@ A plot is inactive until you click it or move keyboard focus into it. Hovering a
 | Zoom around the pointer | Wheel | <kbd>+</kbd> <kbd>−</kbd> |
 | Zoom to a time range | Right-drag; with Shift, also zooms y | |
 | Measure an interval | Shift-drag; over a lane, markers snap to its changes | <kbd>A</kbd> and <kbd>B</kbd> at the cursor, or the view center |
-| Clear markers, cancel a drag | | <kbd>Esc</kbd> |
-| Follow new data | **Live** checkbox | <kbd>L</kbd> |
+| Clear markers, cancel a drag; then leave the enlarged view | | <kbd>Esc</kbd> |
+| Follow new data | **Live** switch | <kbd>L</kbd> |
 | Show all history with automatic y | **Fit** | <kbd>F</kbd> |
 | Return to the previous view | **Back** | |
 | Hide or isolate a series | Click or Shift-click its legend entry | <kbd>Enter</kbd> or <kbd>Space</kbd> on the entry |
 | Download the plot's data | **Export view** | |
+| Enlarge the plot to fill the window, and return | **Enlarge**, then **Reduce**, in the plot header | <kbd>E</kbd> |
 
-On touch screens an inactive plot lets the page scroll, the first tap activates it, drag pans, and two taps set A and B.
+On touch screens an inactive plot lets the page scroll, the first tap activates it, drag pans, and two taps set A and B. Buttons are taller there.
 
 - **The control band.** While a plot is active, a one-row band above the data shows Live, Fit, Back and Export view on the right, and a key legend on the left. A legend that does not fit shows as much as it can and fades out; hovering it shows the full legend over the top of the plot. The band is reserved, so it never covers data. Touch screens show no key legend.
-- **Live and Fit.** While Live is checked, the wheel only changes the followed window, so zooming keeps tracking new data. Panning or range zoom unchecks Live, and checking it again keeps the current span. Fit is a one-time action that leaves Live as it is; while Live is checked, the followed window then covers all history as data arrives.
+- **Live and Fit.** The Live switch and the lamp in each plot's header are lit green while the plot follows new data, so a held plot stands out even when its controls are hidden. While Live is checked, the wheel only changes the followed window, so zooming keeps tracking new data. Panning or range zoom unchecks Live, and checking it again keeps the current span. Fit is a one-time action that leaves Live as it is; while Live is checked, the followed window then covers all history as data arrives.
+- **Enlarge.** The Enlarge button in a plot's header is always visible. It makes the plot fill the window below the topbar, with the spare height going to the plot area, and then reads Reduce. Enlarging adds a browser history entry, so the browser's Back button returns to the page instead of leaving it, and Forward enlarges the plot again; the button, <kbd>E</kbd> and <kbd>Esc</kbd> go back the same way. The page behind keeps its scroll position, the other plots stop drawing until you return, and a plot of lanes only keeps the height of its lanes.
 - **Focus.** Shortcuts work while a plot is active, wherever focus is inside it; combinations with Ctrl, Cmd or Alt are left to the browser. Clicking a toolbar control keeps the plot active and returns focus to it, while a control activated from the keyboard keeps focus.
 - **Reading values.** Hovering shows a crosshair; the readout row gives the elapsed time, the y value under the pointer, the nearest sample and its estimated uptime. Y tick labels read bottom to top, so the y axis needs only one line of text; long labels get fewer ticks.
-- **Legend.** A hidden series keeps an outlined swatch and keeps recording. Legend, readout and measurement text can be selected and copied; selecting legend text does not toggle the series.
+- **Legend.** Legend entries brighten under the pointer. A hidden series keeps an outlined swatch and keeps recording. Legend, readout and measurement text can be selected and copied; selecting legend text does not toggle the series.
 
 ### Measurements
 
-Measuring or placing a marker unchecks Live so the markers stay in view. The markers are labelled A and B on the outer side of the interval, as an amber band; a range zoom in progress shows as a gray band with dashed edges.
+Measuring or placing a marker unchecks Live so the markers stay in view. The markers are labelled A and B on the outer side of the interval, as an orange band; a range zoom in progress shows as a striped band with dashed edges.
 
 Below the readout, an A/B line gives both marker times, Δt and 1/Δt. A table gives each series' count, minimum, maximum, peak-to-peak, mean, RMS, population standard deviation, Δy and slope. The line and one row per series are always present, so measuring never moves the page; the table scrolls sideways on plots too narrow for it.
 
@@ -181,7 +183,7 @@ Add `data-sse-discrete` to a series to draw it as a lane: a timing-diagram row f
 - **Modes.** `data-sse-discrete` alone, or `data-sse-discrete="bus"`, draws each value as a labelled segment with slanted ends at every change. `data-sse-discrete="logic"` draws a two-level signal: `1`, `true`, `on`, `high` and non-zero numbers are high; `0`, `false`, `off` and `low` are low, ignoring case.
 - **Values.** A lane's value is its text after JSON selection and the transform, so a transform may return a string such as `0xf23a`. A value holds until the next change; repeated values only confirm it, and only changes are stored. Missing, empty and unrecognized values leave a gap, as does a disconnect, so send the current value again after connecting. Unrecognized logic values count as Graph errors.
 - **Drawing.** Lanes are one text line tall and stack below the numeric area in markup order, sharing its time axis. A graph with only lanes has no y axis, and its height follows its lanes. Lane names sit in the left gutter; synced graphs share one gutter width, so stacked time axes line up. Changes too close together to draw show as a gray block with their count, and zooming in resolves them.
-- **Colors.** A hash of each value's text picks two of 24 colors: eight hue families near the page's own palette, each in three pastel tints that keep black text readable. The second color always has a different hue. A value takes its first color unless another value in the same lane already has that hue; then it takes its second. So a value usually keeps its color across lanes, graphs and sessions, while values in the same lane mostly get different hues. The legend shows the value at the cursor with its color. Logic lanes use the series color.
+- **Colors.** A hash of each value's text picks two of 24 colors: eight hue families, none of them red or orange, each in three dark tints that keep white text readable and outlined in a bright tone of the hue. The second color always has a different hue. A value takes its first color unless another value in the same lane already has that hue; then it takes its second. So a value usually keeps its color across lanes, graphs and sessions, while values in the same lane mostly get different hues. The legend shows the value at the cursor with its color. Logic lanes use the series color.
 - **Measuring.** Markers placed within 5 px of a change over a lane snap to it. A second table lists each lane's value at A and at B, the changes between them, the distinct values, and the value held longest with its share of the interval. Counts that include summarized history are marked `≥`.
 
 ### Graph values
@@ -239,7 +241,7 @@ Values flow from the raw string or selected JSON value, through an optional tran
 
 ## Connection, uptime and restarts
 
-The topbar shows the connection state: Connecting and Reconnecting in amber, Connected in green, Stalled and Disconnected in red. Screen readers announce state changes, and counters update at most once a second. Export progress and errors appear next to **Export All**.
+The status badge in the topbar takes the color of the connection state: yellow while Connecting and Reconnecting, green when Connected, red when Stalled and Disconnected. A fault also turns the rule under the topbar red. Screen readers announce state changes, and counters update at most once a second. Export progress and errors appear next to **Export All**.
 
 Transient failures use the browser's `EventSource` reconnect and the server's `retry:` interval. A terminal closure, including HTTP 204, shows Disconnected and a **Retry** button; the browser does not reveal the HTTP status.
 
@@ -268,6 +270,8 @@ The topbar shows `Uptime ≈HH:MM:SS`, advancing once a second from the last rep
 After a reconnect, the first valid uptime report is compared with the last reported one. A lower value adds an estimated restart marker and starts a new local segment, which is bookkeeping rather than a device identifier; earlier history stays available. Periodic reports never add markers. The marker's time is the report's arrival minus its uptime, so network buffering, clock drift and browser suspension affect it, and a restart is missed if the new uptime already exceeds the last one seen.
 
 ## Exports
+
+Captured data lives only in the page. While events have arrived since the last **Export All** or `TurboSSE.exportCSV()`, closing, reloading or leaving the page makes the browser ask for confirmation. Browsers word that question themselves, and show it only after you have clicked or typed in the page. Export view saves one plot's interval and does not count.
 
 Every export downloads one ZIP named `sse-<timestamp>.zip`, even when it holds a single CSV:
 
@@ -332,19 +336,31 @@ A summary describes several samples over an interval, and its mean is never expo
 
 ## Styling
 
-`turbo-sse.css` follows the look of the HAProxy status page: 12 px Arial, black on white, 1 px gray rules, navy header bars, beige bands, tinted connection states and a yellow key legend, with tabular figures for numbers.
+`turbo-sse.css` follows a camera's menu and on-screen display: true black, white readouts, gray labels, 1 px rules and square corners, with tabular figures for numbers. Bars and buttons share one gloss, a light sheen over each one's own color. Titles and readouts use a bold DIN face that ships with the system, DIN Alternate on Apple devices and Bahnschrift on Windows; labels and prose use Helvetica or Arial. The page is dark only, and nothing is downloaded.
+
+Each color has one meaning:
+
+| Color | Meaning |
+| --- | --- |
+| Orange | Your selection: the active plot's frame and header bar, keyboard focus, hovered and pressed controls, the A/B interval and selected text |
+| Green | Live: connected, or a plot following new data |
+| Yellow | In between: connecting or reconnecting |
+| Red | A fault: stalled or disconnected, and estimated restarts |
+
+The connection state fills the status badge in the topbar. Round lamps, lit green, show which plots follow new data: one in each plot header and one in the Live switch. Export, Retry, Fit, Back and Enlarge carry 11 px icons that are embedded in the stylesheet as masks, so they take the text color and need no image files.
 
 It is also a small classless stylesheet for the page around the plots:
 
 - `body` and `main` set the font, colors and a centered page up to 1920 px wide. Set `--turbo-sse-page-width` to change the width; the topbar keeps its full-width background and lines its content up with the page.
 - Each `<section>` directly inside `<main>` becomes a column. Neighbouring columns share a row when each can be at least 480 px wide, grow to fill it, and stack otherwise. Everything else in `<main>` takes a full-width row.
-- A `<header>` directly inside `<main>` sets the `<h1>` title and a `<p>` tagline on one ruled line. `<h2>` is a navy italic subtitle.
-- `<h3>` and table `<caption>` are navy bands like the plot headers, so a captioned table reads as a panel.
-- Tables collapse their borders, `thead` cells get the beige band, row headers in `tbody` size to their content, and cells use tabular figures. `<hr>` is a gray rule.
+- A `<header>` directly inside `<main>` sets the `<h1>` title and a gray `<p>` tagline on one ruled line. `<h2>` is a smaller title.
+- `<h3>` and table `<caption>` are dark gray bands like the plot headers, so a captioned table reads as a panel.
+- Tables collapse their borders and rule their rows. Header cells are gray labels and data cells are white; row headers in `tbody` size to their content, and cells use tabular figures. `<hr>` is a gray rule.
 - `<details>` is set off by a rule with a bold `<summary>`, and `<section>` blocks inside it get a border. `<pre>` wraps long lines and scrolls beyond 240 px.
-- `<footer>`, links, `<kbd>`, buttons, disabled buttons and focus rings get matching styles, and `[hidden]` always hides.
+- A `<p>` or `<footer>` directly inside `<main>` keeps its lines to about 100 characters on wide pages.
+- `<footer>`, links, `<kbd>`, buttons, disabled buttons, focus rings and selected text get matching styles, and `[hidden]` always hides.
 
-These are plain element selectors, so your own rules for the same elements override them. The canvas takes its axis, tick and grid color from the computed `color` of `.turbo-sse-area`. Series colors come from a fixed six-color palette and are exposed to the legend as `--series-color`.
+These are plain element selectors, so your own rules for the same elements override them. The canvas takes its axis, tick and grid color from the computed `color` of `.turbo-sse-area`. Series colors come from a fixed six-color palette and are exposed to the legend as `--series-color`. The palette is made for thin lines on black: every pair stays distinct with red-green color blindness, and it leaves red and orange to restart markers and the selection.
 
 ## JavaScript API
 
@@ -353,7 +369,7 @@ TurboSSE.init();       // Runs automatically on page load; repeated calls are ha
 TurboSSE.refresh();    // Rescan bindings and re-resolve transforms after markup changes.
 TurboSSE.exportCSV();  // Download the raw events as CSV; also returns the CSV text.
 TurboSSE.stats();      // Counters, connection state, retained bytes and lastEventId.
-TurboSSE.destroy();    // Close the stream, cancel work, release data, remove generated UI.
+TurboSSE.destroy();    // Close the stream, cancel work, release data, remove generated UI and the leave warning.
 ```
 
 `init(rootElement)` selects the root explicitly. `refresh()` preserves unchanged append bindings, shared graph histories, inspection state and existing subscriptions. Label changes keep graph data; changing a graph source or its transform resets that source, and removing one plot keeps a source still used by another.
@@ -431,4 +447,4 @@ Publishing a GitHub Release attaches the same eight files to it; pushing a tag a
 
 ## Validation
 
-[VALIDATION.md](VALIDATION.md) records the test environment, numerical checks against reference statistics, live-run results, distribution sizes and the SHA-256 hashes of the tested build. The script and stylesheet total 20,909 bytes gzipped.
+[VALIDATION.md](VALIDATION.md) records the test environment, numerical checks against reference statistics, live-run results, distribution sizes and the SHA-256 hashes of the tested build. The script and stylesheet total 22,172 bytes gzipped.

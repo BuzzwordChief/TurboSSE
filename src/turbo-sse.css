@@ -1,51 +1,91 @@
-/* TurboSSE styling, after the HAProxy status page: Arial, black on white, gray rules, beige and navy bands.
+/* TurboSSE styling, after a camera's menu and on-screen display: true black, white readouts, gray labels, 1 px
+   rules, square corners and glossy bars. Orange marks what you have selected, green is live, yellow is in between
+   and red is a fault.
    The first part is a classless base for the whole page; the second styles the interface TurboSSE generates. */
 
 /* Classless page base. */
 *, ::before, ::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
 /* The page content, and the TurboSSE topbar content, stay within this width. */
-:root { --turbo-sse-page-width: 1920px; }
-body { margin: 0; color: #000; background: #fff; font: 12px/1.4 arial, helvetica, sans-serif; }
+:root { --turbo-sse-page-width: 1920px; color-scheme: dark; }
+body { margin: 0; color: #c8c8c8; background: #000; font: 12px/1.4 "Helvetica Neue", helvetica, arial, sans-serif; }
 /* Direct <section> children of <main> share a row as columns at least 480 px wide and grow to fill it;
    everything else in <main> takes a full-width row. */
 main { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0 10px; max-width: var(--turbo-sse-page-width); margin: 0 auto; padding: 6px 10px 16px; }
 main > * { flex: 1 1 100%; min-width: 0; }
 main > section { flex-basis: 480px; }
-main > header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 12px; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px solid #000; }
-main > header > p, h2 { margin: 0; color: #005996; font-size: 16px; font-style: italic; font-weight: 700; }
-h1 { margin: 0; font-size: 24px; }
-h3, caption, .turbo-sse-plot > header { margin: 0; padding: 1px 5px; color: #fff; background: #123e67; font-size: inherit; font-weight: 700; text-align: left; }
+main > header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 12px; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid #fff; }
+main > header > p { margin: 0; color: #969696; }
+/* Titles and readouts share one bold, narrow face; labels and prose use the plain one. */
+h1, h2, h3, caption, .turbo-sse-plot > header, .turbo-sse-status, .turbo-sse-uptime, .turbo-sse-series-value { margin: 0; color: #fff; font-family: "DIN Alternate", bahnschrift, sans-serif; font-weight: 700; }
+h1 { font-size: 24px; }
+h2 { font-size: 16px; }
+h3, caption, .turbo-sse-plot > header { padding: 3px 6px; font-size: 13px; text-align: left; }
 p { margin: 6px 0; }
-a { color: #005996; }
+/* Prose stays readable on wide pages: its row is full width, its lines are not. */
+main > p, main > footer { padding-right: max(0px, 100% - 100ch); }
+a { color: inherit; }
+a:hover { color: #ff7a00; }
 table { width: 100%; margin-bottom: 10px; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-th, td { padding: 2px 5px; border: 1px solid #808080; text-align: left; vertical-align: top; }
-thead th { background: #e8e8d0; }
+th, td { padding: 2px 6px; color: #969696; border-bottom: 1px solid #383838; font-weight: 400; text-align: left; vertical-align: top; }
+td { color: #fff; }
 tbody th { width: 1%; white-space: nowrap; }
-hr { margin: 10px 0; border: 0; border-top: 1px solid #808080; }
-details { margin: 6px 0; padding-top: 6px; border-top: 1px solid #000; }
-summary { font-weight: 700; cursor: pointer; }
-details > section { margin-top: 6px; border: 1px solid #808080; }
-pre { max-height: 240px; margin: 0; padding: 3px 5px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.5 monospace; }
-footer { margin-top: 10px; color: #404040; font-size: 11px; }
-button, .turbo-sse-plot label { margin: 0 0 0 3px; padding: 1px 6px; color: inherit; background: #fff; border: 1px solid #808080; border-radius: 3px; font: inherit; cursor: pointer; }
-button:hover, .turbo-sse-plot label:hover { background: #e8e8d0; }
-button:disabled { color: #808080; background: #fff; cursor: default; }
-kbd { padding: 0 3px; font: inherit; background: #fff; border: 1px solid #808080; border-radius: 3px; }
-:focus-visible { outline: 2px solid #005996; outline-offset: 1px; }
+hr { margin: 10px 0; border: 0; border-top: 1px solid #383838; }
+details { margin: 6px 0; padding-top: 6px; border-top: 1px solid #383838; }
+summary { color: #fff; font-weight: 700; cursor: pointer; }
+details > section { margin-top: 6px; border: 1px solid #383838; }
+pre { max-height: 240px; margin: 0; padding: 3px 6px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.5 ui-monospace, menlo, consolas, monospace; }
+footer { margin-top: 10px; color: #969696; font-size: 11px; }
+button, .turbo-sse-plot label { margin: 0 0 0 4px; padding: 1px 6px; color: #fff; border: 1px solid #5e5e5e; border-radius: 0; font: inherit; white-space: nowrap; cursor: pointer; }
+button:hover, .turbo-sse-plot label:hover { border-color: #ff7a00; }
+button:active { color: #000; background-color: #ff7a00; border-color: #ff7a00; }
+button:disabled { color: #5e5e5e; background: #000; border-color: #383838; cursor: default; }
+kbd { padding: 0 3px; color: #969696; font: inherit; border: 1px solid #5e5e5e; }
+:focus-visible { outline: 2px solid #ff7a00; outline-offset: 1px; }
+::selection { color: #000; background: #ff7a00; }
 
 /* Generated interface. */
-.turbo-sse-bar, .turbo-sse-plot { color: #000; background: #fff; font: 12px/1.4 arial, helvetica, sans-serif; font-variant-numeric: tabular-nums; }
-.turbo-sse-bar { position: sticky; top: 0; z-index: 1000; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; padding: 3px max(10px, 50% - var(--turbo-sse-page-width) / 2 + 10px); background: #e8e8d0; border-bottom: 1px solid #808080; }
-.turbo-sse-status { padding: 0 6px; font-weight: 700; background: #ffd020; border: 1px solid #808080; }
-[data-state=connected] > .turbo-sse-status { background: #c0ffc0; }
-[data-state=disconnected] > .turbo-sse-status, [data-state=stalled] > .turbo-sse-status { background: #ff9090; }
-.turbo-sse-counts { flex: 1; white-space: nowrap; }
+.turbo-sse-bar, .turbo-sse-plot { color: #c8c8c8; background: #000; font: 12px/1.4 "Helvetica Neue", helvetica, arial, sans-serif; font-variant-numeric: tabular-nums; }
+.turbo-sse-bar { position: sticky; top: 0; z-index: 1000; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; padding: 4px max(10px, 50% - var(--turbo-sse-page-width) / 2 + 10px); border-bottom: 1px solid #383838; }
+/* Bars and keys share one gloss, as on a camera menu: a sheen over each one's own color. */
+.turbo-sse-bar, .turbo-sse-status, h3, caption, .turbo-sse-plot > header, button, .turbo-sse-plot label { background: linear-gradient(#fff3, #fff0) #1c1c1c; }
+/* The status badge takes the color of the connection state; a fault also turns the bar's rule red. */
+.turbo-sse-status { padding: 0 8px; color: #000; background-color: #ffd400; }
+[data-state=connected] > .turbo-sse-status { background-color: #2fd060; }
+[data-state=disconnected] > .turbo-sse-status, [data-state=stalled] > .turbo-sse-status { background-color: #ff3b30; }
+.turbo-sse-bar[data-state=disconnected], .turbo-sse-bar[data-state=stalled] { border-color: #ff3b30; }
+/* Lamps show each plot's live state and its Live switch. A lit lamp is green. */
+.turbo-sse-plot > header > strong::before, .turbo-sse-plot input { content: ""; display: inline-block; appearance: none; width: 8px; height: 8px; margin: 0 6px 0 0; color: #969696; background: #000; border: 1px solid; border-radius: 50%; box-shadow: 0 0 0 1px #000; }
+.turbo-sse-plot[data-live] > header > strong::before, .turbo-sse-plot :checked { color: #2fd060; background: currentColor; }
+.turbo-sse-counts { flex: 1; color: #969696; white-space: nowrap; }
+.turbo-sse-bar output { color: #fff; }
 .turbo-sse-bar output:empty { display: none; }
+/* Export All stays at the right edge, also when a narrow bar wraps it onto its own row. */
+.turbo-sse-export { margin-left: auto; }
+/* Icons are 11 px pictograms with 1 px strokes, drawn as masks so they take the text color. */
+.turbo-sse-bar button::before, .turbo-sse-plot button::before { content: ""; display: inline-block; width: 11px; height: 11px; margin-right: 5px; background: currentColor; vertical-align: -1px; }
+.turbo-sse-export::before, [data-action^=Export]::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' fill='none' stroke='red'><path d='M5.5 0v7.5M2.5 4.5l3 3 3-3M.5 8v2.5h10V8'/></svg>"); }
+.turbo-sse-retry::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' fill='none' stroke='red'><path d='M9.5 6.5A4.2 4.2 0 1 1 8.5 2.5M8.5 0v2.5H6'/></svg>"); }
+[data-action=Fit]::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' fill='none' stroke='red'><path d='M.5 3.5v-3h3M7.5.5h3v3M10.5 7.5v3h-3M3.5 10.5h-3v-3'/></svg>"); }
+[data-action=Back]::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' fill='none' stroke='red'><path d='M3.5 1.5l-3 3 3 3M.5 4.5h10v5h-6'/></svg>"); }
+.turbo-sse-plot > header > button::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' fill='none' stroke='red'><path d='M6.5.5h4v4M10.5.5l-4 4M.5 6.5v4h4M.5 10.5l4-4'/></svg>"); }
+.turbo-sse-plot[data-max] > header > button::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' fill='none' stroke='red'><path d='M10.5 4.5h-4v-4M6.5 4.5l4-4M.5 6.5h4v4M4.5 6.5l-4 4'/></svg>"); }
 [data-sse-graph] { margin-bottom: 10px; }
-.turbo-sse-plot { border: 1px solid #808080; min-width: 0; }
-.turbo-sse-plot > header { display: flex; justify-content: space-between; gap: 8px; }
-.turbo-sse-plot > header > span { font-style: italic; font-weight: 400; }
+/* The active plot wears the selection frame, and its header the selection bar. */
+.turbo-sse-plot { min-width: 0; border: 1px solid #383838; }
+.turbo-sse-plot[data-active] { border-color: #ff7a00; outline: 1px solid #ff7a00; }
+.turbo-sse-plot > header { display: flex; align-items: center; gap: 8px; }
+.turbo-sse-plot > header > strong { flex: 1; }
+.turbo-sse-plot > header > span { color: #969696; }
+.turbo-sse-plot > header > button { margin: 0; padding: 0 6px; font-size: 11px; }
+.turbo-sse-plot[data-active] > header, .turbo-sse-plot[data-active] > header > span { color: #000; }
+.turbo-sse-plot[data-active] > header { background-color: #ff7a00; }
+/* An enlarged plot fills the window below the topbar; the script sets its top edge. Its plot area takes the
+   spare height, the page behind it does not scroll, and the other plots cannot be reached. */
+.turbo-sse-plot[data-max] { position: fixed; inset: 0; z-index: 999; display: flex; flex-direction: column; overflow: auto; }
+.turbo-sse-plot[data-max] > .turbo-sse-area { flex: 1 0 200px; }
+:root:has(.turbo-sse-plot[data-max]) { overflow: hidden; }
+:root:has(.turbo-sse-plot[data-max]) .turbo-sse-plot:not([data-max]) { visibility: hidden; }
 /* The script reserves a one-row band above the data for this bar, so it never covers data. The script also
    moves its left edge to the plot area's, leaving the y-axis label visible. The key legend shows as much as fits
    and fades out where it is cut off; hovering it shows a full copy over the plot.
@@ -55,37 +95,38 @@ kbd { padding: 0 3px; font: inherit; background: #fff; border: 1px solid #808080
 .turbo-sse-tools > span > .turbo-sse-hint { flex: none; flex-wrap: nowrap; }
 .turbo-sse-tools > [data-more] { mask-image: linear-gradient(to right, #000 calc(100% - 48px), #0000); }
 .turbo-sse-tools > [data-more]:hover { mask-image: none; }
-.turbo-sse-tools > span > .turbo-sse-hint + .turbo-sse-hint { position: absolute; top: 0; left: 0; max-width: 100%; flex-wrap: wrap; }
+.turbo-sse-tools > span > .turbo-sse-hint + .turbo-sse-hint { position: absolute; top: 0; left: 0; z-index: 1; max-width: 100%; flex-wrap: wrap; border-color: #5e5e5e; }
 .turbo-sse-tools > span:not([data-more]:hover) > .turbo-sse-hint + .turbo-sse-hint { display: none; }
 .turbo-sse-tools > [role] { display: flex; flex: none; margin-left: auto; }
 .turbo-sse-plot:not([data-active]) .turbo-sse-tools { visibility: hidden; }
-.turbo-sse-plot:not([data-active]):hover .turbo-sse-tools::before { content: "Click to interact"; position: absolute; top: 0; left: 0; visibility: visible; }
-.turbo-sse-hint { display: flex; flex-wrap: wrap; gap: 1px 8px; }
-.turbo-sse-hint, .turbo-sse-tools::before { padding: 1px 5px; background: #f0f060; border: 1px solid #7040c0; border-radius: 3px; box-shadow: 2px 2px 3px #808080; pointer-events: none; }
-.turbo-sse-plot input { margin: 0 4px 0 0; vertical-align: -1px; }
-.turbo-sse-tools > [role] kbd { margin-left: 4px; pointer-events: none; }
-.turbo-sse-area { position: relative; height: var(--turbo-sse-height, 220px); overflow: hidden; color: #000; }
-.turbo-sse-area canvas { display: block; width: 100%; height: 100%; }
-.turbo-sse-plot[data-active] canvas { touch-action: none; }
-.turbo-sse-area canvas:focus-visible { outline-offset: -2px; }
-.turbo-sse-cursor { position: absolute; border-left: 1px solid #000; pointer-events: none; }
-.turbo-sse-cross-y { position: absolute; border-top: 1px dotted #000; pointer-events: none; }
-/* A/B measurement: amber band with solid marker lines. Zoom selection: gray band with dashed edges. */
-.turbo-sse-selection { position: absolute; background: #ffd02040; border: solid #b07000; border-width: 0 1px; pointer-events: none; }
-.turbo-sse-selection[data-zoom] { background: #80808033; border-color: #000; border-style: dashed; }
-.turbo-sse-legend { display: flex; flex-wrap: wrap; gap: 0 10px; padding: 2px 5px; background: #e8e8d0; border-top: 1px solid #808080; }
+.turbo-sse-plot:not([data-active]):hover .turbo-sse-tools::before { content: "Click to interact"; position: absolute; top: 0; left: 0; color: #ff7a00; visibility: visible; }
+.turbo-sse-hint { display: flex; flex-wrap: wrap; gap: 1px 10px; }
+.turbo-sse-hint, .turbo-sse-tools::before { padding: 1px 5px; background: #000; border: 1px solid #000; pointer-events: none; }
+.turbo-sse-plot :is(button, label) kbd { margin-left: 4px; pointer-events: none; }
+.turbo-sse-area { position: relative; height: var(--turbo-sse-height, 220px); overflow: hidden; color: #969696; }
+.turbo-sse-area canvas { display: block; width: 100%; height: 100%; outline: 0; }
+.turbo-sse-plot[data-active] canvas { touch-action: none; cursor: crosshair; }
+.turbo-sse-cursor { position: absolute; border-left: 1px solid #fff; pointer-events: none; }
+.turbo-sse-cross-y { position: absolute; border-top: 1px dotted #fff; pointer-events: none; }
+/* A/B measurement: orange band with solid marker lines. Zoom selection: striped band with dashed edges. */
+.turbo-sse-selection { position: absolute; background: linear-gradient(#ff7a0055, #ff7a001a); border: solid #ff7a00; border-width: 0 1px; pointer-events: none; }
+.turbo-sse-selection[data-zoom] { background: repeating-linear-gradient(135deg, #fff3 0 1px, #0000 1px 5px); border-color: #fff; border-style: dashed; }
+.turbo-sse-legend { display: flex; flex-wrap: wrap; gap: 0 14px; padding: 2px 6px; border-top: 1px solid #383838; }
 .turbo-sse-legend > * { padding: 1px 0; max-width: 100%; overflow-wrap: anywhere; cursor: pointer; }
 .turbo-sse-legend > ::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 5px; background: var(--series-color); border: 1px solid var(--series-color); vertical-align: -1px; }
-.turbo-sse-legend [aria-pressed=false] { color: #808080; }
-.turbo-sse-legend [aria-pressed=false]::before { background: #fff; }
-.turbo-sse-series-name { margin-right: 2px; font-weight: 700; }
+.turbo-sse-legend > :hover { color: #fff; }
+.turbo-sse-legend [aria-pressed=false], .turbo-sse-legend [aria-pressed=false] > * { color: #5e5e5e; }
+.turbo-sse-legend [aria-pressed=false]::before { background: none; }
+.turbo-sse-series-name { margin-right: 2px; }
+.turbo-sse-series-value { font-size: 13px; }
 /* Readout and measurement lines stay one line tall, so their changing text never shifts the page.
    The measurement table scrolls sideways when a narrow plot cannot fit it. */
-.turbo-sse-readout, .turbo-sse-measure p { overflow: hidden; margin: 0; padding: 2px 5px; border-top: 1px solid #808080; white-space: nowrap; text-overflow: ellipsis; }
-.turbo-sse-measure p { font-weight: 700; background: #e8e8d0; }
+.turbo-sse-readout, .turbo-sse-measure p { overflow: hidden; margin: 0; padding: 2px 6px; border-top: 1px solid #383838; white-space: nowrap; text-overflow: ellipsis; }
+.turbo-sse-measure p { color: #fff; background: #1c1c1c; }
 .turbo-sse-measure { overflow-x: auto; }
 .turbo-sse-measure table { margin: 0; border-style: hidden; white-space: nowrap; }
-.turbo-sse-measure table + table { border-top: 1px solid #808080; }
-@media (hover: none) { .turbo-sse-tools > span { display: none; } }
+.turbo-sse-measure table + table { border-top: 1px solid #383838; }
+/* Touch screens show no key legend and get taller controls. */
+@media (hover: none) { .turbo-sse-tools > span { display: none; } button, .turbo-sse-plot label { padding-block: 6px; } }
 /* Last, so it overrides the page and topbar padding above. */
 @media (max-width: 600px) { main { padding: 4px 6px 12px; } .turbo-sse-bar { padding-inline: 6px; } h1 { font-size: 20px; } }
