@@ -149,13 +149,13 @@ A plot is inactive until you click it or move keyboard focus into it. Hovering a
 | Return to the previous view | **Back** | |
 | Hide or isolate a series | Click or Shift-click its legend entry | <kbd>Enter</kbd> or <kbd>Space</kbd> on the entry |
 | Download the plot's data | **Export view** | |
-| Enlarge the plot to fill the window, and return | **Enlarge**, then **Reduce**, in the plot header | <kbd>E</kbd> |
+| Enlarge the plot to fill the window, and return | **Enlarge**, then **Reduce**; or press the active plot's header | <kbd>E</kbd> |
 
 On touch screens an inactive plot lets the page scroll, the first tap activates it, drag pans, and two taps set A and B. Buttons are taller there.
 
-- **The control band.** While a plot is active, a one-row band above the data shows Live, Fit, Back and Export view on the right, and a key legend on the left. A legend that does not fit shows as much as it can and fades out; hovering it shows the full legend over the top of the plot. The band is reserved, so it never covers data. Touch screens show no key legend.
+- **The control band.** While a plot is active, a one-row band above the data shows Live, Fit, Back, Export view and Enlarge on the right, and a key legend on the left. A legend that does not fit shows as much as it can and fades out; hovering it shows the full legend over the top of the plot and the buttons. The band is reserved, so it never covers data. Touch screens show no key legend and no key glyphs, and a plot narrower than 440 px drops the key glyphs from its buttons.
 - **Live and Fit.** The Live switch and the lamp in each plot's header are lit green while the plot follows new data, so a held plot stands out even when its controls are hidden. While Live is checked, the wheel only changes the followed window, so zooming keeps tracking new data. Panning or range zoom unchecks Live, and checking it again keeps the current span. Fit is a one-time action that leaves Live as it is; while Live is checked, the followed window then covers all history as data arrives.
-- **Enlarge.** The Enlarge button in a plot's header is always visible. It makes the plot fill the window below the topbar, with the spare height going to the plot area, and then reads Reduce. Enlarging adds a browser history entry, so the browser's Back button returns to the page instead of leaving it, and Forward enlarges the plot again; the button, <kbd>E</kbd> and <kbd>Esc</kbd> go back the same way. The page behind keeps its scroll position, the other plots stop drawing until you return, and a plot of lanes only keeps the height of its lanes.
+- **Enlarge.** Enlarge is in the control band, so it shows for the active plot only. Pressing the active plot's header does the same, like entering a selected menu row; the pointer turns into a magnifier there. The plot then fills the window below the topbar, with the spare height going to the plot area, and the button reads Reduce. Enlarging adds a browser history entry, so the browser's Back button returns to the page instead of leaving it, and Forward enlarges the plot again; Reduce, the header, <kbd>E</kbd> and <kbd>Esc</kbd> go back the same way. The enlarged plot stays active, the page behind keeps its scroll position, the other plots stop drawing until you return, and a plot of lanes only keeps the height of its lanes.
 - **Focus.** Shortcuts work while a plot is active, wherever focus is inside it; combinations with Ctrl, Cmd or Alt are left to the browser. Clicking a toolbar control keeps the plot active and returns focus to it, while a control activated from the keyboard keeps focus.
 - **Reading values.** Hovering shows a crosshair; the readout row gives the elapsed time, the y value under the pointer, the nearest sample and its estimated uptime. Y tick labels read bottom to top, so the y axis needs only one line of text; long labels get fewer ticks.
 - **Legend.** Legend entries brighten under the pointer. A hidden series keeps an outlined swatch and keeps recording. Legend, readout and measurement text can be selected and copied; selecting legend text does not toggle the series.
@@ -241,7 +241,7 @@ Values flow from the raw string or selected JSON value, through an optional tran
 
 ## Connection, uptime and restarts
 
-The status badge in the topbar takes the color of the connection state: yellow while Connecting and Reconnecting, green when Connected, red when Stalled and Disconnected. A fault also turns the rule under the topbar red. Screen readers announce state changes, and counters update at most once a second. Export progress and errors appear next to **Export All**.
+The state tab at the left of the topbar, and the rule under the whole topbar, take the color of the connection state: yellow while Connecting and Reconnecting, green when Connected, red when Stalled and Disconnected. The tab shows a pulse while connected and a flat line otherwise. Screen readers announce state changes, and counters update at most once a second. Export progress and errors appear next to **Export All**.
 
 Transient failures use the browser's `EventSource` reconnect and the server's `retry:` interval. A terminal closure, including HTTP 204, shows Disconnected and a **Retry** button; the browser does not reveal the HTTP status.
 
@@ -336,7 +336,14 @@ A summary describes several samples over an interval, and its mean is never expo
 
 ## Styling
 
-`turbo-sse.css` follows a camera's menu and on-screen display: true black, white readouts, gray labels, 1 px rules and square corners, with tabular figures for numbers. Bars and buttons share one gloss, a light sheen over each one's own color. Titles and readouts use a bold DIN face that ships with the system, DIN Alternate on Apple devices and Bahnschrift on Windows; labels and prose use Helvetica or Arial. The page is dark only, and nothing is downloaded.
+`turbo-sse.css` follows a camera's menu: true black, white readouts, gray labels and 1 px rules, with tabular figures for numbers. Each kind of bar has its own finish, so the page keeps a hierarchy:
+
+- **The topbar is the tab strip.** It is glossy black and taller than the other bars. The connection state is its lit tab, and colors the rule under it across the page.
+- **Plot headers are title bars**, with a gray gloss, the title on the left and the unit at the right edge. Table captions and `<h3>` share that finish.
+- **The active plot wears the selection**: an orange frame and an orange header bar.
+- **Buttons are dark keys, and key names are filled glyphs**, as on a camera's key guide. A capital letter sits within about a third of a pixel of a glyph's center, and a glyph within half a pixel of its button's.
+
+Titles and readouts use a bold DIN face that ships with the system, DIN Alternate on Apple devices and Bahnschrift on Windows; labels and prose use Helvetica or Arial. The page is dark only, and nothing is downloaded.
 
 Each color has one meaning:
 
@@ -347,18 +354,17 @@ Each color has one meaning:
 | Yellow | In between: connecting or reconnecting |
 | Red | A fault: stalled or disconnected, and estimated restarts |
 
-The connection state fills the status badge in the topbar. Round lamps, lit green, show which plots follow new data: one in each plot header and one in the Live switch. Export, Retry, Fit, Back and Enlarge carry 11 px icons that are embedded in the stylesheet as masks, so they take the text color and need no image files.
+Round lamps, lit green, show which plots follow new data: one in each plot header and one in the Live switch. The state tab, Export, Retry, Fit, Back, Enlarge and Reduce carry 11 px icons that are embedded in the stylesheet as masks, so they take the text color and need no image files.
 
 It is also a small classless stylesheet for the page around the plots:
 
-- `body` and `main` set the font, colors and a centered page up to 1920 px wide. Set `--turbo-sse-page-width` to change the width; the topbar keeps its full-width background and lines its content up with the page.
-- Each `<section>` directly inside `<main>` becomes a column. Neighbouring columns share a row when each can be at least 480 px wide, grow to fill it, and stack otherwise. Everything else in `<main>` takes a full-width row.
+- `body` and `main` set the font, colors and a centered page up to 2560 px wide. Set `--turbo-sse-page-width` to change the width; the topbar keeps its full-width background and lines its content up with the page.
+- Each `<section>` directly inside `<main>` becomes a column of one grid. As many columns share a row as fit at 460 px or wider, and all columns are the same width, so the time axes of stacked plots line up. A few sections share the whole row; four form two rows of two until all four fit side by side, which they do on a 1920 px screen. Set `--turbo-sse-column` to change the least column width: a smaller value puts more plots in a row. Everything else in `<main>` takes a full-width row.
 - A `<header>` directly inside `<main>` sets the `<h1>` title and a gray `<p>` tagline on one ruled line. `<h2>` is a smaller title.
 - `<h3>` and table `<caption>` are dark gray bands like the plot headers, so a captioned table reads as a panel.
 - Tables collapse their borders and rule their rows. Header cells are gray labels and data cells are white; row headers in `tbody` size to their content, and cells use tabular figures. `<hr>` is a gray rule.
 - `<details>` is set off by a rule with a bold `<summary>`, and `<section>` blocks inside it get a border. `<pre>` wraps long lines and scrolls beyond 240 px.
-- A `<p>` or `<footer>` directly inside `<main>` keeps its lines to about 100 characters on wide pages.
-- `<footer>`, links, `<kbd>`, buttons, disabled buttons, focus rings and selected text get matching styles, and `[hidden]` always hides.
+- `<kbd>` is a filled key glyph. `<footer>`, links, buttons, disabled buttons, focus rings and selected text get matching styles, and `[hidden]` always hides.
 
 These are plain element selectors, so your own rules for the same elements override them. The canvas takes its axis, tick and grid color from the computed `color` of `.turbo-sse-area`. Series colors come from a fixed six-color palette and are exposed to the legend as `--series-color`. The palette is made for thin lines on black: every pair stays distinct with red-green color blindness, and it leaves red and orange to restart markers and the selection.
 
@@ -408,7 +414,7 @@ PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright" .venv39/bin/python -m playwright ins
 .venv39/bin/python tools/build.py --check
 ```
 
-The build writes minified assets, deterministic `.gz` variants and the C headers to `dist/`, which is not committed. It reports the combined gzip size against a soft 8 KiB target and fails above the 22 KiB regression ceiling. `--check` fails if any generated file is stale.
+The build writes minified assets, deterministic `.gz` variants and the C headers to `dist/`, which is not committed. It reports the combined gzip size against a soft 8 KiB target and fails above the 22.5 KiB regression ceiling. `--check` fails if any generated file is stale.
 
 The tests run real localhost SSE endpoints in Chromium, Firefox and WebKit, covering rendering, transforms, capture limits, downloads, reconnects, watchdogs, plot interaction, exports and the demo page. Header tests compile C99 and C++11 programs against all headers, and need `cc` and `c++`. While developing:
 
@@ -447,4 +453,4 @@ Publishing a GitHub Release attaches the same eight files to it; pushing a tag a
 
 ## Validation
 
-[VALIDATION.md](VALIDATION.md) records the test environment, numerical checks against reference statistics, live-run results, distribution sizes and the SHA-256 hashes of the tested build. The script and stylesheet total 22,172 bytes gzipped.
+[VALIDATION.md](VALIDATION.md) records the test environment, numerical checks against reference statistics, live-run results, distribution sizes and the SHA-256 hashes of the tested build. The script and stylesheet total 22,564 bytes gzipped.

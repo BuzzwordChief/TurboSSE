@@ -348,16 +348,17 @@
       const header = make("header", "", undefined, this.element);
       make("strong", "", title, header);
       make("span", "", [...new Set(sources.map(c => c.unit).filter(Boolean))].join(", "), header);
-      // The header button enlarges the plot to fill the window; it then reads Reduce and brings the plot back.
-      this.full = make("button", "", "Enlarge", header); this.full.type = "button"; make("kbd", "", "E", this.full);
-      listen(this.full, "click", () => hooks.enlarge(this));
+      // Pressing the header of the active plot enlarges it, as entering a selected menu row; pressing it again
+      // brings the plot back. Selecting the header's text does neither.
+      listen(header, "pointerdown", () => { this.armed = this.active; });
+      listen(header, "click", () => { if (this.armed && getSelection().isCollapsed) hooks.enlarge(this); });
       // The one-row band above the data holds the key legend on the left and the plot controls on the right.
       // A legend that does not fit is cut off and fades out; a hidden full copy appears while it is hovered.
       this.tools = make("div", "turbo-sse-tools");
       const keys = make("span", "", undefined, this.tools), hint = make("div", "turbo-sse-hint", undefined, keys);
       for (const [keys, text] of [["Drag|←|→", "pan"], ["Wheel|+|−", "zoom"], ["Right-drag", "zoom range"], ["Shift|Drag", "measure"], ["A|B", "markers"], ["Esc", "clear"]]) {
         const item = make("span", "", undefined, hint);
-        keys.split("|").forEach((key, i) => { if (i) item.append(keys[0] == "S" ? "+" : " "); make("kbd", "", key, item); });
+        keys.split("|").forEach((key, i) => { if (i) item.append(keys[0] == "S" ? "+" : " "); make("kbd", /\w/.test(key) ? "" : "turbo-sse-sign", key, item); });
         item.append(" " + text);
       }
       keys.append(hint.cloneNode(true)); keys.lastChild.setAttribute("aria-hidden", "true");
@@ -365,9 +366,10 @@
       const live = make("label", "", undefined, this.controls);
       this.liveBox = make("input", "", undefined, live); this.liveBox.type = "checkbox"; this.liveBox.dataset.action = "Live"; live.append("Live"); make("kbd", "", "L", live);
       listen(this.liveBox, "change", () => this.live(this.liveBox.checked));
-      for (const action of ["Fit", "Back", "Export view"]) {
-        const b = make("button", "", action, this.controls); b.type = "button"; b.dataset.action = action;
-        if (action == "Fit") make("kbd", "", "F", b);
+      // The last button enlarges the plot to fill the window; it then reads Reduce.
+      for (const [action, key] of [["Fit", "F"], ["Back"], ["Export view"], ["Enlarge", "E"]]) {
+        const b = this.full = make("button", "", action, this.controls); b.type = "button"; b.dataset.action = action;
+        if (key) make("kbd", "", key, b);
       }
       this.area = make("div", "turbo-sse-area", undefined, this.element);
       this.area.append(this.tools);
@@ -408,6 +410,7 @@
         const action = event.target.dataset.action;
         if (action == "Fit") { this.save(); this.y = null; const r = hooks.extent(view); if (view.live) view.window = Infinity; else { view.lo = r[0]; view.hi = Math.max(r[1], r[0] + .001); } }
         if (action == "Back" && view.history.length) Object.assign(view, view.history.pop());
+        if (action == "Enlarge") hooks.enlarge(this);
         if (action == "Export view") hooks.export(sources, view.a !== null && view.b !== null ? [Math.min(view.a, view.b), Math.max(view.a, view.b)] : [view.lo, view.hi]);
         // After a pointer click, return focus to the canvas so its shortcuts keep working.
         // Keyboard activation shows a focus ring on the control; focus then stays for tabbing.
@@ -474,8 +477,8 @@
         if (key === "f") this.controls.querySelector("[data-action=Fit]").click();
         hooks.invalidate();
       });
-      // A press or focus inside the plot activates it; anywhere else deactivates it.
-      for (const type of ["pointerdown", "focusin"]) listen(document, type, event => this.activate(this.element.contains(event.target)));
+      // A press or focus inside the plot activates it; anywhere else deactivates it, unless the plot is enlarged.
+      for (const type of ["pointerdown", "focusin"]) listen(document, type, event => this.activate(this.element.contains(event.target) || this.element.hasAttribute("data-max")));
       this.observer = new ResizeObserver(() => {
         keys.toggleAttribute("data-more", keys.scrollWidth > keys.clientWidth);
         this.top = Math.max(16, this.tools.offsetHeight + 6); hooks.invalidate();
@@ -863,13 +866,12 @@
     // browser's Back button returns to the page and Forward enlarges the plot again.
     function enlarge(plot) {
       if (plot && plot === big) return history.back();
-      if (plot) history.pushState({turboSSE: Array.from(plots.values()).indexOf(plot) + 1}, "");
-      const n = (history.state || 0).turboSSE;
-      let i = 0;
-      big = null;
-      for (const p of plots.values()) {
-        const max = ++i === n, e = p.element;
-        if (max) big = p;
+      const all = Array.from(plots.values());
+      if (plot) history.pushState({turboSSE: all.indexOf(plot) + 1}, "");
+      big = all[(history.state || 0).turboSSE - 1] || null;
+      for (const p of all) {
+        const max = p === big, e = p.element;
+        if (big) p.activate(max);  // The enlarged plot is the active one.
         if (max !== e.hasAttribute("data-max")) {
           // The plot leaves the page flow; its place keeps its height, and the page its scroll position.
           p.host.style.minHeight = max ? p.host.getBoundingClientRect().height + "px" : "";

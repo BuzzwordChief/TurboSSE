@@ -309,7 +309,8 @@ class GraphCases:
         expect(live).to_be_checked(checked=not checked)
         # Keyboard users stay on the control they activated (WebKit on macOS does not Tab to buttons).
         if self.ENGINE != 'webkit':
-            self.page.keyboard.press('Shift+Tab'); self.page.keyboard.press('Shift+Tab')
+            for _ in range(3):
+                self.page.keyboard.press('Shift+Tab')
             self.assertEqual(self.page.evaluate('document.activeElement.dataset.action'), 'Back')
             self.page.keyboard.press('Enter')
             self.assertEqual(self.page.evaluate('document.activeElement.dataset.action'), 'Back')
@@ -425,12 +426,13 @@ class GraphCases:
         expect(full).to_be_hidden()
 
     def test_enlarged_plot_fills_the_window_and_follows_history(self):
-        self.open('<p>Before</p><div id="a" data-sse-graph data-sse-event="v"></div><div id="b" data-sse-graph data-sse-event="w"></div>'
+        self.open('<p>Before</p><div id="a" data-sse-graph data-sse-event="v"></div><div id="b" data-sse-graph data-sse-event="w" data-sse-unit="rpm"></div>'
                   '<div id="l" data-sse-graph data-sse-event="s" data-sse-discrete></div><div style="height:2000px"></div>')
         for i in range(8):
             self.case.emit('v', str(i)); self.case.emit('w', str(i)); self.case.emit('s', 'S' + str(i % 2)); self.page.wait_for_timeout(15)
         self.received(24)
-        plot, button = self.page.locator('#b .turbo-sse-plot'), self.page.locator('#b .turbo-sse-plot > header button')
+        plot, button = self.page.locator('#b .turbo-sse-plot'), self.page.locator('#b [data-action="Enlarge"]')
+        header = self.page.locator('#b .turbo-sse-plot > header')
         box = '''id => { const r = document.querySelector(id + " .turbo-sse-plot").getBoundingClientRect(), bar = document.querySelector(".turbo-sse-bar").getBoundingClientRect();
             const box = {top: r.top - bar.bottom, left: r.left, right: document.documentElement.clientWidth - r.right, bottom: innerHeight - r.bottom,
                     canvas: document.querySelector(id + " canvas").clientHeight, page: document.documentElement.scrollHeight, y: scrollY};
@@ -438,8 +440,15 @@ class GraphCases:
             return box; }'''
         self.page.evaluate('scrollTo(0, 150)')
         small = self.page.evaluate(box, '#b')
+        # The header is a title bar: the title on the left, the unit at its right edge, and nothing else.
+        self.assertEqual(header.evaluate('e => [e.children.length, Math.round(e.getBoundingClientRect().right - e.lastChild.getBoundingClientRect().right)]'), [2, 6])
+        # Pressing the header first only activates the plot, like the plot area; pressing the active header enlarges it.
+        expect(button).to_be_hidden()
+        header.click()
+        expect(plot).to_have_attribute('data-active', '')
+        expect(plot).not_to_have_attribute('data-max', '')
         expect(button).to_have_text('EnlargeE')
-        button.click()
+        header.click()
         expect(plot).to_have_attribute('data-max', '')
         expect(button).to_have_text('ReduceE')
         self.frames()
@@ -451,6 +460,9 @@ class GraphCases:
         self.assertEqual((big['page'], big['y']), (small['page'], small['y']))
         self.assertEqual(self.page.evaluate('getComputedStyle(document.documentElement).overflowY'), 'hidden')
         expect(self.page.locator('#a .turbo-sse-plot')).to_be_hidden()
+        # The enlarged plot stays the active one, wherever the pointer presses.
+        self.page.locator('.turbo-sse-counts').click()
+        expect(plot).to_have_attribute('data-active', '')
         # The browser's Back button returns to the page, and Forward enlarges the plot again.
         self.assertEqual(self.page.evaluate('history.state.turboSSE'), 2)
         self.page.evaluate('history.back()')
@@ -469,13 +481,18 @@ class GraphCases:
         expect(plot).not_to_have_attribute('data-max', '')
         self.page.keyboard.press('e')
         expect(plot).to_have_attribute('data-max', '')
-        # A refresh keeps the plot enlarged; the button returns to the page.
+        # A refresh keeps the plot enlarged; the Reduce button and the header both return to the page.
         self.page.evaluate('TurboSSE.refresh()')
         expect(plot).to_have_attribute('data-max', '')
         button.click()
         expect(plot).not_to_have_attribute('data-max', '')
+        button.click()
+        expect(plot).to_have_attribute('data-max', '')
+        header.click()
+        expect(plot).not_to_have_attribute('data-max', '')
         # A plot of lanes only fills the window too, but keeps the height of its lanes.
-        self.page.locator('#l .turbo-sse-plot > header button').click()
+        self.page.locator('#l canvas').click(position={'x': 200, 'y': 40})
+        self.page.locator('#l [data-action="Enlarge"]').click()
         expect(self.page.locator('#l .turbo-sse-plot')).to_have_attribute('data-max', '')
         self.frames()
         lanes = self.page.evaluate(box, '#l')
@@ -640,7 +657,7 @@ class GraphCases:
         self.page.keyboard.up('Shift'); self.frames()
         self.page.mouse.move(*spot); zoomed, text = self.pointer_y()
         self.assertNotAlmostEqual(zoomed, fitted, delta=abs(fitted) * .01 + 1e-9, msg=text)
-        self.assertEqual(self.page.locator('#a .turbo-sse-tools button').all_inner_texts(), ['FitF', 'Back', 'Export view'])
+        self.assertEqual(self.page.locator('#a .turbo-sse-tools button').all_inner_texts(), ['FitF', 'Back', 'Export view', 'EnlargeE'])
 
     def test_restart_rows_and_unsynchronized_times(self):
         self.open('<div data-sse-graph data-sse-event="v"></div>')

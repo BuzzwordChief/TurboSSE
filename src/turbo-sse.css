@@ -1,19 +1,28 @@
-/* TurboSSE styling, after a camera's menu and on-screen display: true black, white readouts, gray labels, 1 px
-   rules, square corners and glossy bars. Orange marks what you have selected, green is live, yellow is in between
-   and red is a fault.
+/* TurboSSE styling, after a camera's menu: true black, white readouts, gray labels and 1 px rules. Each kind of
+   bar has its own finish: the topbar is the tab strip, with the connection state as its lit tab; plot headers are
+   title bars; the active plot wears the orange selection bar; keys are filled glyphs.
+   Orange marks what you have selected, green is live, yellow is in between and red is a fault.
    The first part is a classless base for the whole page; the second styles the interface TurboSSE generates. */
 
 /* Classless page base. */
 *, ::before, ::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
-/* The page content, and the TurboSSE topbar content, stay within this width. */
-:root { --turbo-sse-page-width: 1920px; color-scheme: dark; }
+/* The page content, and the TurboSSE topbar content, stay within the page width. A column is at least the
+   column width wide. */
+:root { --turbo-sse-page-width: 2560px; --turbo-sse-column: 460px; color-scheme: dark; }
 body { margin: 0; color: #c8c8c8; background: #000; font: 12px/1.4 "Helvetica Neue", helvetica, arial, sans-serif; }
-/* Direct <section> children of <main> share a row as columns at least 480 px wide and grow to fill it;
-   everything else in <main> takes a full-width row. */
-main { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0 10px; max-width: var(--turbo-sse-page-width); margin: 0 auto; padding: 6px 10px 16px; }
-main > * { flex: 1 1 100%; min-width: 0; }
-main > section { flex-basis: 480px; }
+/* Direct <section> children of <main> are columns of one grid: as many as fit, all the same width, so their time
+   axes line up from row to row. --n counts them, so that a few sections share the whole row; four form two rows
+   of two until all four fit side by side. Everything else in <main> takes a full-width row. */
+main { --n: 9; --pair: 0px; display: grid; grid-template-columns: repeat(auto-fill, minmax(max(min(var(--turbo-sse-column), 100%), (100% + 10px) / var(--n) - 10.1px, var(--pair)), 1fr)); align-items: start; gap: 0 10px; max-width: var(--turbo-sse-page-width); margin: 0 auto; padding: 6px 10px 16px; }
+main:has(> section) { --n: 1; }
+main:has(> section:nth-of-type(2)) { --n: 2; }
+main:has(> section:nth-of-type(3)) { --n: 3; }
+main:has(> section:nth-of-type(4)) { --n: 4; --pair: min(50% - 5.1px, max(0px, (4 * var(--turbo-sse-column) + 30px - 100%) * 9999)); }
+main:has(> section:nth-of-type(5)) { --n: 5; --pair: 0px; }
+main:has(> section:nth-of-type(6)) { --n: 9; }
+main > * { grid-column: 1 / -1; min-width: 0; }
+main > section { grid-column: auto; }
 main > header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 12px; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid #fff; }
 main > header > p { margin: 0; color: #969696; }
 /* Titles and readouts share one bold, narrow face; labels and prose use the plain one. */
@@ -22,8 +31,6 @@ h1 { font-size: 24px; }
 h2 { font-size: 16px; }
 h3, caption, .turbo-sse-plot > header { padding: 3px 6px; font-size: 13px; text-align: left; }
 p { margin: 6px 0; }
-/* Prose stays readable on wide pages: its row is full width, its lines are not. */
-main > p, main > footer { padding-right: max(0px, 100% - 100ch); }
 a { color: inherit; }
 a:hover { color: #ff7a00; }
 table { width: 100%; margin-bottom: 10px; border-collapse: collapse; font-variant-numeric: tabular-nums; }
@@ -36,50 +43,55 @@ summary { color: #fff; font-weight: 700; cursor: pointer; }
 details > section { margin-top: 6px; border: 1px solid #383838; }
 pre { max-height: 240px; margin: 0; padding: 3px 6px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.5 ui-monospace, menlo, consolas, monospace; }
 footer { margin-top: 10px; color: #969696; font-size: 11px; }
+/* Title bars and buttons share a gray gloss. */
+h3, caption, .turbo-sse-plot > header, button, .turbo-sse-plot label { background: linear-gradient(#fff3, #fff0) #1c1c1c; }
 button, .turbo-sse-plot label { margin: 0 0 0 4px; padding: 1px 6px; color: #fff; border: 1px solid #5e5e5e; border-radius: 0; font: inherit; white-space: nowrap; cursor: pointer; }
 button:hover, .turbo-sse-plot label:hover { border-color: #ff7a00; }
 button:active { color: #000; background-color: #ff7a00; border-color: #ff7a00; }
 button:disabled { color: #5e5e5e; background: #000; border-color: #383838; cursor: default; }
-kbd { padding: 0 3px; color: #969696; font: inherit; border: 1px solid #5e5e5e; }
+/* Keys are filled glyphs, 13 px tall. The fixed line box centers a capital letter in the key and the key on the
+   text beside it. Arrows and signs sit lower in their line than capitals, so their keys lift them by a pixel. */
+kbd { display: inline-block; min-width: 13px; padding: 0 3px; color: #000; background: linear-gradient(#f4f4f4, #a8a8a8); border-radius: 2px; font: 700 9px/13px "Helvetica Neue", helvetica, arial, sans-serif; text-align: center; }
+.turbo-sse-sign { padding-bottom: 2px; line-height: 11px; }
 :focus-visible { outline: 2px solid #ff7a00; outline-offset: 1px; }
 ::selection { color: #000; background: #ff7a00; }
 
 /* Generated interface. */
 .turbo-sse-bar, .turbo-sse-plot { color: #c8c8c8; background: #000; font: 12px/1.4 "Helvetica Neue", helvetica, arial, sans-serif; font-variant-numeric: tabular-nums; }
-.turbo-sse-bar { position: sticky; top: 0; z-index: 1000; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; padding: 4px max(10px, 50% - var(--turbo-sse-page-width) / 2 + 10px); border-bottom: 1px solid #383838; }
-/* Bars and keys share one gloss, as on a camera menu: a sheen over each one's own color. */
-.turbo-sse-bar, .turbo-sse-status, h3, caption, .turbo-sse-plot > header, button, .turbo-sse-plot label { background: linear-gradient(#fff3, #fff0) #1c1c1c; }
-/* The status badge takes the color of the connection state; a fault also turns the bar's rule red. */
-.turbo-sse-status { padding: 0 8px; color: #000; background-color: #ffd400; }
-[data-state=connected] > .turbo-sse-status { background-color: #2fd060; }
-[data-state=disconnected] > .turbo-sse-status, [data-state=stalled] > .turbo-sse-status { background-color: #ff3b30; }
-.turbo-sse-bar[data-state=disconnected], .turbo-sse-bar[data-state=stalled] { border-color: #ff3b30; }
-/* Lamps show each plot's live state and its Live switch. A lit lamp is green. */
-.turbo-sse-plot > header > strong::before, .turbo-sse-plot input { content: ""; display: inline-block; appearance: none; width: 8px; height: 8px; margin: 0 6px 0 0; color: #969696; background: #000; border: 1px solid; border-radius: 50%; box-shadow: 0 0 0 1px #000; }
-.turbo-sse-plot[data-live] > header > strong::before, .turbo-sse-plot :checked { color: #2fd060; background: currentColor; }
-.turbo-sse-counts { flex: 1; color: #969696; white-space: nowrap; }
-.turbo-sse-bar output { color: #fff; }
+/* The topbar is the tab strip: glossy black, taller than a title bar, with the connection state as its lit tab
+   and as the rule below it. */
+.turbo-sse-bar { --turbo-sse-state: #ffd400; position: sticky; top: 0; z-index: 1000; display: flex; flex-wrap: wrap; align-items: center; gap: 0 14px; padding: 0 max(10px, 50% - var(--turbo-sse-page-width) / 2 + 10px); background: linear-gradient(#444, #161616 50%, #000); border-bottom: 2px solid var(--turbo-sse-state); font-size: 13px; }
+.turbo-sse-bar[data-state=connected] { --turbo-sse-state: #2fd060; }
+.turbo-sse-bar[data-state=disconnected], .turbo-sse-bar[data-state=stalled] { --turbo-sse-state: #ff3b30; }
+.turbo-sse-status { padding: 6px 12px; color: #000; background: linear-gradient(#fff8, #fff0 50%, #0003) var(--turbo-sse-state); }
+.turbo-sse-counts { color: #969696; font-size: 12px; white-space: nowrap; }
 .turbo-sse-bar output:empty { display: none; }
 /* Export All stays at the right edge, also when a narrow bar wraps it onto its own row. */
+.turbo-sse-bar button { margin-block: 4px; font-size: 12px; }
 .turbo-sse-export { margin-left: auto; }
-/* Icons are 11 px pictograms with 1 px strokes, drawn as masks so they take the text color. */
-.turbo-sse-bar button::before, .turbo-sse-plot button::before { content: ""; display: inline-block; width: 11px; height: 11px; margin-right: 5px; background: currentColor; vertical-align: -1px; }
+/* Icons are 11 px pictograms with 1 px strokes, drawn as masks so they take the text color. The state tab shows a
+   pulse while connected and a flat line otherwise. */
+.turbo-sse-status::before, .turbo-sse-bar button::before, .turbo-sse-plot button::before { content: ""; display: inline-block; width: 11px; height: 11px; margin-right: 5px; background: currentColor; vertical-align: -1px; }
+.turbo-sse-status::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' fill='none' stroke='red'><path d='M0 5.5h11'/></svg>"); }
+[data-state=connected] > .turbo-sse-status::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' fill='none' stroke='red'><path d='M0 5.5h2.5l1.5-4 2.5 8 1.5-4h3'/></svg>"); }
 .turbo-sse-export::before, [data-action^=Export]::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' fill='none' stroke='red'><path d='M5.5 0v7.5M2.5 4.5l3 3 3-3M.5 8v2.5h10V8'/></svg>"); }
 .turbo-sse-retry::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' fill='none' stroke='red'><path d='M9.5 6.5A4.2 4.2 0 1 1 8.5 2.5M8.5 0v2.5H6'/></svg>"); }
 [data-action=Fit]::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' fill='none' stroke='red'><path d='M.5 3.5v-3h3M7.5.5h3v3M10.5 7.5v3h-3M3.5 10.5h-3v-3'/></svg>"); }
 [data-action=Back]::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' fill='none' stroke='red'><path d='M3.5 1.5l-3 3 3 3M.5 4.5h10v5h-6'/></svg>"); }
-.turbo-sse-plot > header > button::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' fill='none' stroke='red'><path d='M6.5.5h4v4M10.5.5l-4 4M.5 6.5v4h4M.5 10.5l4-4'/></svg>"); }
-.turbo-sse-plot[data-max] > header > button::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' fill='none' stroke='red'><path d='M10.5 4.5h-4v-4M6.5 4.5l4-4M.5 6.5h4v4M4.5 6.5l-4 4'/></svg>"); }
+[data-action=Enlarge]::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' fill='none' stroke='red'><path d='M6.5.5h4v4M10.5.5l-4 4M.5 6.5v4h4M.5 10.5l4-4'/></svg>"); }
+[data-max] [data-action=Enlarge]::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' fill='none' stroke='red'><path d='M10.5 4.5h-4v-4M6.5 4.5l4-4M.5 6.5h4v4M4.5 6.5l-4 4'/></svg>"); }
 [data-sse-graph] { margin-bottom: 10px; }
-/* The active plot wears the selection frame, and its header the selection bar. */
-.turbo-sse-plot { min-width: 0; border: 1px solid #383838; }
+/* The active plot wears the selection frame, and its header the selection bar. Pressing that bar enlarges the
+   plot, or brings an enlarged plot back. Lamps show each plot's live state and its Live switch; lit is green. */
+.turbo-sse-plot { min-width: 0; border: 1px solid #383838; container-type: inline-size; }
 .turbo-sse-plot[data-active] { border-color: #ff7a00; outline: 1px solid #ff7a00; }
-.turbo-sse-plot > header { display: flex; align-items: center; gap: 8px; }
-.turbo-sse-plot > header > strong { flex: 1; }
+.turbo-sse-plot > header { display: flex; justify-content: space-between; gap: 8px; }
 .turbo-sse-plot > header > span { color: #969696; }
-.turbo-sse-plot > header > button { margin: 0; padding: 0 6px; font-size: 11px; }
 .turbo-sse-plot[data-active] > header, .turbo-sse-plot[data-active] > header > span { color: #000; }
-.turbo-sse-plot[data-active] > header { background-color: #ff7a00; }
+.turbo-sse-plot[data-active] > header { background-color: #ff7a00; cursor: zoom-in; }
+.turbo-sse-plot[data-max] > header { cursor: zoom-out; }
+.turbo-sse-plot > header > strong::before, .turbo-sse-plot input { content: ""; display: inline-block; appearance: none; width: 8px; height: 8px; margin: 0 6px 0 0; color: #969696; background: #000; border: 1px solid; border-radius: 50%; box-shadow: 0 0 0 1px #000; }
+.turbo-sse-plot[data-live] > header > strong::before, .turbo-sse-plot :checked { color: #2fd060; background: currentColor; }
 /* An enlarged plot fills the window below the topbar; the script sets its top edge. Its plot area takes the
    spare height, the page behind it does not scroll, and the other plots cannot be reached. */
 .turbo-sse-plot[data-max] { position: fixed; inset: 0; z-index: 999; display: flex; flex-direction: column; overflow: auto; }
@@ -88,7 +100,7 @@ kbd { padding: 0 3px; color: #969696; font: inherit; border: 1px solid #5e5e5e; 
 :root:has(.turbo-sse-plot[data-max]) .turbo-sse-plot:not([data-max]) { visibility: hidden; }
 /* The script reserves a one-row band above the data for this bar, so it never covers data. The script also
    moves its left edge to the plot area's, leaving the y-axis label visible. The key legend shows as much as fits
-   and fades out where it is cut off; hovering it shows a full copy over the plot.
+   and fades out where it is cut off; hovering it shows a full copy over the plot and the toolbar.
    A plot is inactive until clicked or focused; only an active plot shows the bar and takes the wheel. */
 .turbo-sse-tools { position: absolute; top: 3px; left: 66px; right: 3px; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 3px 6px; font-size: 11px; }
 .turbo-sse-tools > span { display: flex; flex: 1 1 0; min-width: 0; overflow: hidden; }
@@ -102,7 +114,7 @@ kbd { padding: 0 3px; color: #969696; font: inherit; border: 1px solid #5e5e5e; 
 .turbo-sse-plot:not([data-active]):hover .turbo-sse-tools::before { content: "Click to interact"; position: absolute; top: 0; left: 0; color: #ff7a00; visibility: visible; }
 .turbo-sse-hint { display: flex; flex-wrap: wrap; gap: 1px 10px; }
 .turbo-sse-hint, .turbo-sse-tools::before { padding: 1px 5px; background: #000; border: 1px solid #000; pointer-events: none; }
-.turbo-sse-plot :is(button, label) kbd { margin-left: 4px; pointer-events: none; }
+.turbo-sse-tools > [role] kbd { margin-left: 4px; pointer-events: none; }
 .turbo-sse-area { position: relative; height: var(--turbo-sse-height, 220px); overflow: hidden; color: #969696; }
 .turbo-sse-area canvas { display: block; width: 100%; height: 100%; outline: 0; }
 .turbo-sse-plot[data-active] canvas { touch-action: none; cursor: crosshair; }
@@ -126,7 +138,11 @@ kbd { padding: 0 3px; color: #969696; font: inherit; border: 1px solid #5e5e5e; 
 .turbo-sse-measure { overflow-x: auto; }
 .turbo-sse-measure table { margin: 0; border-style: hidden; white-space: nowrap; }
 .turbo-sse-measure table + table { border-top: 1px solid #383838; }
-/* Touch screens show no key legend and get taller controls. */
-@media (hover: none) { .turbo-sse-tools > span { display: none; } button, .turbo-sse-plot label { padding-block: 6px; } }
+/* A narrow plot sets its measurement tables tighter, so that they still fit. A narrower one also drops the key
+   glyphs from its buttons, so that they stay on one row. */
+@container (max-width: 560px) { .turbo-sse-measure table { font-size: 11px; } .turbo-sse-measure :is(th, td) { padding-inline: 6px 2px; } }
+@container (max-width: 440px) { .turbo-sse-tools [role] kbd { display: none; } .turbo-sse-tools :is(button, label) { margin-left: 2px; padding-inline: 4px; } }
+/* Touch screens show no keys and get taller controls. */
+@media (hover: none) { .turbo-sse-tools > span, .turbo-sse-tools [role] kbd { display: none; } button, .turbo-sse-plot label { padding-block: 6px; } }
 /* Last, so it overrides the page and topbar padding above. */
 @media (max-width: 600px) { main { padding: 4px 6px 12px; } .turbo-sse-bar { padding-inline: 6px; } h1 { font-size: 20px; } }
