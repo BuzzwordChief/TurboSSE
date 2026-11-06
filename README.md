@@ -135,7 +135,7 @@ A graph element without its own event binding overlays the series inside it. Gra
 
 ### Controls
 
-A plot is inactive until you click it or move keyboard focus into it. Its guide then reads "Click the plot to pan, zoom and measure", and the wheel scrolls the page as usual. The first click only activates the plot, which then wears an orange frame and header; clicking elsewhere or tabbing away deactivates it.
+A plot is inactive until you click it or move keyboard focus into it, and the wheel scrolls the page as usual. Hovering an inactive plot previews the selection: its frame tints orange, its title turns white, a **Click to use** key appears where its controls will be, and the guide line at the bottom of the window names it. The first click only activates the plot, which then wears an orange frame and header; clicking elsewhere or tabbing away deactivates it.
 
 | Action | Pointer | Keyboard |
 | --- | --- | --- |
@@ -153,21 +153,21 @@ A plot is inactive until you click it or move keyboard focus into it. Its guide 
 | Step to the previous or next plot while enlarged | ‹ and › in the title bar | <kbd>[</kbd> <kbd>]</kbd> |
 | Jump to a plot or series by name | **Jump** in the topbar | <kbd>J</kbd> or <kbd>/</kbd> |
 
-On touch screens an inactive plot lets the page scroll, the first tap activates it, drag pans, and two taps set A and B. Buttons are 32 px tall there, and the guide lists these gestures instead of keys.
+On touch screens an inactive plot lets the page scroll, the first tap activates it, drag pans, and two taps set A and B. Buttons are 32 px tall there, and the guide line lists these gestures instead of keys.
 
 - **The control band.** While a plot is active, a one-row band above the data shows Live, Fit, Back, Export view and Enlarge as equal keys, each with its key glyph. The band is reserved, so it never covers data. A plot narrower than 470 px shows the keys' icons only, and touch screens show no key glyphs.
-- **The guide.** Under the plot, the guide pairs each key glyph with what it does, as a camera's bottom line does. It shares its space with the measurement, so measuring never moves the page.
+- **The guide line.** The keys are listed once, in a line along the bottom of the window, as on a camera's screen. It says which plot to click, then lists the keys of the plot in use with what each does, and in the enlarged view adds the paging keys with a square for each plot. The page keeps room for it at its end.
 - **Live and Fit.** The Live switch and the lamp in each plot's header are lit green while the plot follows new data, so a held plot stands out even when its controls are hidden. While Live is checked, the wheel only changes the followed window, so zooming keeps tracking new data. Panning or range zoom unchecks Live, and checking it again keeps the current span. Fit is a one-time action that leaves Live as it is; while Live is checked, the followed window then covers all history as data arrives.
-- **Enlarge.** Enlarge is in the control band, so it shows for the active plot only. Pressing the active plot's header does the same, like entering a selected menu row; the pointer turns into a magnifier there. The plot then fills the window below the topbar, with the spare height going to the plot area, and the button reads Reduce. Enlarging adds a browser history entry, so the browser's Back button returns to the page instead of leaving it, and Forward enlarges the plot again; Reduce, the header, <kbd>E</kbd> and <kbd>Esc</kbd> go back the same way. The enlarged plot stays active, the page behind keeps its scroll position, the other plots stop drawing until you return, and a plot of lanes only keeps the height of its lanes. The title bar shows ‹ 2/4 ›, the guide a square for each plot with the current one orange; ‹ and ›, or <kbd>[</kbd> and <kbd>]</kbd>, step to the neighbouring plot within the same history entry.
+- **Enlarge.** Enlarge is in the control band, so it shows for the active plot only. Pressing the active plot's header does the same, like entering a selected menu row; the pointer turns into a magnifier there. The plot then fills the window below the topbar, with the spare height going to the plot area, and the button reads Reduce. Enlarging adds a browser history entry, so the browser's Back button returns to the page instead of leaving it, and Forward enlarges the plot again; Reduce, the header, <kbd>E</kbd> and <kbd>Esc</kbd> go back the same way. The enlarged plot stays active, the page behind keeps its scroll position, the other plots stop drawing until you return, and a plot of lanes only keeps the height of its lanes. The title bar shows ‹ 2/4 ›, the guide line a square for each plot with the current one orange; ‹ and ›, or <kbd>[</kbd> and <kbd>]</kbd>, step to the neighbouring plot within the same history entry.
 - **Focus.** Shortcuts work while a plot is active, wherever focus is inside it; combinations with Ctrl, Cmd or Alt are left to the browser. Clicking a toolbar control keeps the plot active and returns focus to it, while a control activated from the keyboard keeps focus.
 - **Reading values.** Hovering shows a crosshair that stays under a resting pointer while a live plot moves. Its time sits in a chip on the time axis and its value in a chip on the value axis, and a ring marks each curve's nearest sample. The information line under the series tiles shows LIVE or HOLD, then the elapsed time, the y value, the nearest sample and its estimated uptime, each after its label. Y labels read across; the gutter widens to the longest one and never narrows again, so the plot does not shift sideways.
 - **Series tiles.** Each series has a tile with a numbered badge in its color, its name and its value: the newest at rest, the one under the crosshair while you inspect. The number is the series' export file number (`s01`, `s02`…). A tile keeps the width of its longest value so far and never wraps it, so changing values do not move the page, also in the enlarged view. A hidden series dims its tile, outlines its badge and keeps recording. Tile, readout and measurement text can be selected and copied; selecting does not toggle the series.
 
 ### Measurements
 
-Measuring or placing a marker unchecks Live so the markers stay in view. The interval shows as an orange band, and each marker line carries an orange flag with its letter at the top, on the outer side of the interval so the line never crosses the letter; a range zoom in progress shows as a striped band with dashed edges.
+Measuring or placing a marker unchecks Live so the markers stay in view. The interval shows as an orange band, and each marker is an orange line with a flag at its top carrying its letter, drawn so the flag lies over its line; a range zoom in progress shows as a striped band with dashed edges.
 
-In place of the guide, an A/B line gives both marker times, Δt and 1/Δt. A table gives each series' count, minimum, maximum, peak-to-peak, mean, RMS, population standard deviation, Δy and slope, with numbers aligned right. The line and one row per series always keep their space, so measuring never moves the page; the table scrolls sideways on plots too narrow for it.
+Under each plot, a panel gives statistics. Without markers they cover the visible window, labelled View, and follow a live window up to four times a second. With markers, an A/B line gives both marker times, Δt and 1/Δt. A table gives each series' count, minimum, maximum, peak-to-peak, mean, RMS, population standard deviation, Δy and slope, with numbers aligned right; lanes give their values at the start and end, changes, distinct values and the value held longest. The rows are the same with and without markers, so measuring never moves the page; the table scrolls sideways on plots too narrow for it.
 
 ### Jump to a plot
 
@@ -374,8 +374,8 @@ It is also a small classless stylesheet for the page around the plots:
 - `body` and `main` set the font, colors and a centered page up to 1600 px wide. Set `--turbo-sse-page-width` to change the width; the topbar keeps its full-width background and lines its content up with the page.
 - Each `<section>` directly inside `<main>` becomes a column of one grid. Two columns share a row where both fit at 460 px or wider, and both are the same width, so the time axes of stacked plots line up; more sections continue in further rows, and a lone section takes the whole row. Set `--turbo-sse-column` to change the least column width. Everything else in `<main>` takes a full-width row.
 - A `<header>` directly inside `<main>` sets the `<h1>` title and a gray `<p>` tagline on one ruled line. `<h2>` is a smaller title.
-- `<h3>` and table `<caption>` are quiet titles over a soft rule; gloss belongs to the interface.
-- Tables are quiet lists: as wide as their content, with a small capital caption, faint row rules, gray header cells, white data cells and tabular figures. A row of one label and one value keeps the value on the right. `<hr>` is a gray rule.
+- `<h3>` is a quiet title.
+- Tables are panels like the plots: a frame, the `<caption>` as a title bar with the plot headers' gloss, a darker header row, faint row rules, gray header cells, white data cells and tabular figures. A row of one label and one value keeps the value on the right. Put a table in a `<section>` to give it a column of the grid. `<hr>` is a gray rule.
 - `<details>` is set off by a rule with a bold `<summary>`, and `<section>` blocks inside it get a border. `<pre>` wraps long lines and scrolls beyond 240 px.
 - `<kbd>` is a filled key glyph in capitals. `<footer>`, links, buttons, disabled buttons, focus rings and selected text get matching styles, and `[hidden]` always hides.
 
@@ -466,4 +466,4 @@ Publishing a GitHub Release attaches the same eight files to it; pushing a tag a
 
 ## Validation
 
-[VALIDATION.md](VALIDATION.md) records the test environment, numerical checks against reference statistics, live-run results, distribution sizes and the SHA-256 hashes of the tested build. The script and stylesheet total 27,563 bytes gzipped.
+[VALIDATION.md](VALIDATION.md) records the test environment, numerical checks against reference statistics, live-run results, distribution sizes and the SHA-256 hashes of the tested build. The script and stylesheet total 28,010 bytes gzipped.

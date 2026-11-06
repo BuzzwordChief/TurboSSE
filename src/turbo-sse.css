@@ -21,7 +21,6 @@ main { --n: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(ma
 main:has(> section:nth-of-type(2)) { --n: 2; }
 main > * { grid-column: 1 / -1; min-width: 0; }
 main > section { grid-column: auto; }
-main > table { justify-self: start; }
 main > header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin-bottom: 12px; padding-bottom: 9px; border-bottom: 1px solid #ffffff3a; }
 main > header > p { margin: 0; color: #8f8f8f; }
 h1, h2, h3, caption, summary, table, button, input { font-family: var(--turbo-sse-mono); }
@@ -32,14 +31,15 @@ h3 { padding: 2px 6px 6px; font-size: 13px; }
 p { margin: 6px 0; }
 a { color: inherit; }
 a:hover { color: #ff7a00; }
-/* Tables are quiet menu lists: as wide as their content, a small capital caption, gray labels, white values and
-   faint rules. A row of one label and one value keeps the value on the right. */
-table { width: auto; min-width: min(100%, 360px); margin-bottom: 12px; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
-caption { padding: 2px 6px 6px; color: #cfcfcf; font-size: 11px; letter-spacing: .08em; text-align: left; text-transform: uppercase; border-bottom: 1px solid #333; }
-th, td { padding: 4px 6px; color: #8f8f8f; border-bottom: 1px solid #1c1c1c; font-weight: 400; text-align: left; vertical-align: top; }
+/* Tables are panels like the plots: a frame, the caption as a title bar with the soft gloss, a darker header row,
+   gray labels, white values and faint rules. A row of one label and one value keeps the value on the right. */
+table { width: 100%; margin-bottom: 12px; border: 1px solid #3a3a3a; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+caption { height: 30px; padding: 0 10px; color: #fff; font-size: 14px; line-height: 30px; text-align: left; background: linear-gradient(#ffffff30, #ffffff00) #1c1c1c; border: 1px solid #3a3a3a; border-bottom: 0; box-shadow: inset 0 1px 0 #ffffff24, inset 0 -1px 0 #000; }
+thead th { background: #111; }
+th, td { padding: 5px 10px; color: #8f8f8f; border-bottom: 1px solid #1c1c1c; font-weight: 400; text-align: left; vertical-align: top; }
 td { color: #fff; }
 tbody th { color: #cfcfcf; white-space: nowrap; }
-tr:has(> th:first-child + td:last-child) > * { padding-block: 5px; vertical-align: middle; }
+tr:has(> th:first-child + td:last-child) > * { vertical-align: middle; }
 tr > th:first-child + td:last-child, thead th:first-child + th:last-child { padding-left: 24px; text-align: right; }
 hr { margin: 12px 0; border: 0; border-top: 1px solid #262626; }
 details { margin: 6px 0; padding-top: 6px; border-top: 1px solid #262626; }
@@ -128,7 +128,16 @@ kbd + kbd { margin-left: 2px; }
 /* Page squares, the current one orange. */
 .turbo-sse-menu p > :first-child, .turbo-sse-guide i { display: inline-flex; gap: 3px; }
 :is(.turbo-sse-menu p > :first-child, .turbo-sse-guide i) i { width: 8px; height: 8px; background: #5f5f5f; box-shadow: inset 0 1px 0 #ffffff30; }
-.turbo-sse-menu [data-on], .turbo-sse-guide [data-on] { background: #ff7a00; }
+:is(.turbo-sse-menu p > :first-child, .turbo-sse-guide i) [data-on] { background: #ff7a00; }
+/* The guide line runs along the bottom of the window, quieter than the topbar: which plot to click, then the keys of
+   the plot in use. The root keeps room for it at its end. */
+.turbo-sse-guide { position: fixed; inset: auto 0 0; z-index: 1000; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; min-height: 30px; padding: 5px max(12px, 50% - var(--turbo-sse-page-width) / 2 + 12px); color: #cfcfcf; background: #0b0b0b; border-top: 1px solid #3a3a3a; font: 11.5px/1.4 var(--turbo-sse-mono); }
+[data-sse-connect]:has(> .turbo-sse-guide:not([hidden])) { padding-bottom: 32px; }
+.turbo-sse-guide > * { display: none; align-items: center; gap: 4px; white-space: nowrap; }
+.turbo-sse-guide[data-mode=idle] > [data-for~=idle], .turbo-sse-guide[data-mode=hover] > [data-for~=hover], .turbo-sse-guide:is([data-mode=active], [data-mode=big]) > [data-for~=active], .turbo-sse-guide[data-mode=big] > [data-for=big] { display: inline-flex; }
+.turbo-sse-guide b { color: #fff; }
+.turbo-sse-guide > [data-for=hover] b { color: #ff7a00; }
+.turbo-sse-guide i { display: inline-flex; gap: 3px; margin-left: 8px; }
 [data-sse-graph] { margin-bottom: 12px; }
 /* The active plot wears the orange frame, and its header the orange bar. Pressing that bar enlarges the plot, or
    brings an enlarged plot back. Lamps show each plot's live state and its Live switch; lit is green. */
@@ -160,6 +169,12 @@ kbd + kbd { margin-left: 2px; }
 .turbo-sse-tools { position: absolute; top: 4px; left: 66px; right: 6px; z-index: 1; display: flex; justify-content: flex-end; }
 .turbo-sse-tools > div { display: flex; gap: 4px; }
 .turbo-sse-plot:not([data-active]) .turbo-sse-tools { visibility: hidden; }
+/* A plot not in use previews the selection under the pointer: a dim orange frame, a white title, and a Click to use
+   key where its controls will appear. */
+.turbo-sse-plot:not([data-active]):hover { border-color: #ff7a0099; }
+.turbo-sse-plot:not([data-active]):hover > header { color: #fff; cursor: pointer; }
+.turbo-sse-plot:not([data-active]) canvas { cursor: pointer; }
+.turbo-sse-plot:not([data-active]):hover .turbo-sse-tools::before { content: "Click to use"; position: absolute; top: 0; right: 0; visibility: visible; display: flex; align-items: center; height: 22px; padding: 0 8px; color: #000; background: linear-gradient(#ffffff66, #ffffff00 70%) #ff7a00; border-radius: 2px; font: 700 10.5px var(--turbo-sse-mono); text-transform: uppercase; }
 @container (max-width: 470px) { .turbo-sse-tools button > span, .turbo-sse-tools kbd { display: none; } .turbo-sse-tools button { padding-inline: 6px; } }
 .turbo-sse-area { position: relative; height: var(--turbo-sse-height, 220px); overflow: hidden; color: #8f8f8f; }
 .turbo-sse-area canvas { display: block; width: 100%; height: 100%; outline: 0; }
@@ -173,9 +188,10 @@ kbd + kbd { margin-left: 2px; }
 .turbo-sse-cursor::after { content: attr(data-t); top: calc(100% + 3px); left: var(--shift, 0px); transform: translateX(-50%); }
 .turbo-sse-cross-y::before { content: attr(data-v); right: calc(100% + 1px); top: -8px; }
 .turbo-sse-ring { width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; background: #000; border: 2px solid var(--series-color); border-radius: 50%; }
-/* A/B measurement: orange band with solid marker lines. Zoom selection: striped band with dashed edges. */
-.turbo-sse-selection { position: absolute; background: linear-gradient(#ff7a0055, #ff7a001a); border: solid #ff7a00; border-width: 0 1px; pointer-events: none; }
-.turbo-sse-selection[data-zoom] { background: repeating-linear-gradient(135deg, #fff3 0 1px, #0000 1px 5px); border-color: #fff; border-style: dashed; }
+/* A/B measurement: an orange band; the canvas draws the marker lines and their flags. Zoom selection: a striped
+   band with dashed edges. */
+.turbo-sse-selection { position: absolute; background: linear-gradient(#ff7a0055, #ff7a001a); pointer-events: none; }
+.turbo-sse-selection[data-zoom] { background: repeating-linear-gradient(135deg, #fff3 0 1px, #0000 1px 5px); border: dashed #fff; border-width: 0 1px; }
 /* Series tiles, as in a camera's function menu: a numbered badge and the name over the value, between thin
    rules. A tile is as wide as its widest value so far and never wraps it, so changing values do not move the
    page. A series reached by a jump is the selected tile. */
@@ -205,26 +221,16 @@ kbd + kbd { margin-left: 2px; }
 .turbo-sse-readout > * + * { margin-left: 8px; }
 .turbo-sse-chip { padding: 2px 5px; color: #000; background: linear-gradient(#fff8, #fff0 55%, #0002) #34d058; border-radius: 2px; box-shadow: inset 0 0 0 1px #0004; font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
 .turbo-sse-chip[data-hold] { color: #fff; background: none; box-shadow: inset 0 0 0 1px #fff; }
-/* Guide and measurement share one grid cell, so the panel keeps its height and measuring never moves the page.
-   The guide is a camera's bottom line: a key glyph, then the word for what it does. */
-.turbo-sse-measure { display: grid; border-top: 1px solid #262626; }
-.turbo-sse-measure > * { grid-area: 1 / 1; min-width: 0; overflow-x: auto; }
-.turbo-sse-measure[data-idle] > div:last-child, .turbo-sse-measure:not([data-idle]) > .turbo-sse-guide { visibility: hidden; }
-.turbo-sse-guide { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); align-content: start; gap: 8px 18px; padding: 10px 12px; font-size: 11.5px; }
-.turbo-sse-guide::before { content: "Keys"; grid-column: 1 / -1; color: #ff7a00; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
-/* The build's minifier removes spaces after commas, also inside strings, so the comma and its space are escaped. */
-.turbo-sse-plot:not([data-active]) .turbo-sse-guide::before { content: "Click the plot to pan\2c\20 zoom and measure"; color: #fff; }
-.turbo-sse-plot:not([data-active]) .turbo-sse-guide > * { opacity: .45; }
-.turbo-sse-guide > span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
-.turbo-sse-guide b { padding: 0 6px; color: #000; background: linear-gradient(#fbfbfb, #b6b6b6); border-radius: 9px; font-size: 10px; line-height: 18px; text-transform: uppercase; }
-.turbo-sse-guide [data-touch], .turbo-sse-plot:not([data-max]) [data-big] { display: none; }
-.turbo-sse-guide i { margin-left: 8px; }
+/* The panel under the plot: statistics of the visible window, labelled View, then of the A/B interval. */
+.turbo-sse-measure { overflow-x: auto; border-top: 1px solid #262626; }
 .turbo-sse-measure p { display: flex; gap: 20px; overflow: hidden; padding: 8px 10px 7px; font-size: 15px; line-height: 1; white-space: nowrap; background: #111; border-bottom: 1px solid #262626; }
 .turbo-sse-measure p > span { display: inline-flex; align-items: baseline; gap: 6px; }
 .turbo-sse-measure p small { color: #8f8f8f; font-size: 10px; }
 .turbo-sse-measure p > :nth-child(-n+2) small { color: #ff7a00; font-weight: 700; }
+.turbo-sse-measure[data-idle] p small { color: #8f8f8f; font-weight: 400; }
 .turbo-sse-measure p b small { color: #8f8f8f; font-size: 11px; font-weight: 400; }
-.turbo-sse-measure table { width: 100%; min-width: 0; margin: 0; font-size: 11.5px; white-space: nowrap; }
+.turbo-sse-measure table { margin: 0; font-size: 11.5px; white-space: nowrap; border: 0; }
+.turbo-sse-measure thead th { background: none; }
 .turbo-sse-measure table + table { border-top: 1px solid #262626; }
 .turbo-sse-measure :is(th, td) { padding: 4px 9px; text-align: right; border-bottom: 0; border-top: 1px solid #1d1d1d; }
 .turbo-sse-measure thead th { padding-block: 7px 4px; border-top: 0; }
@@ -233,10 +239,9 @@ kbd + kbd { margin-left: 2px; }
 @container (max-width: 560px) { .turbo-sse-measure table { font-size: 10.5px; } .turbo-sse-measure :is(th, td) { padding-inline: 4px; } .turbo-sse-measure :is(thead th:first-child, tbody th) { padding-left: 9px; } }
 /* Touch screens show gestures instead of keys and get taller controls. */
 @media (hover: none) {
-  .turbo-sse-guide > span:not([data-touch]), .turbo-sse-tools kbd, .turbo-sse-menu p > :not(:first-child) { display: none; }
-  .turbo-sse-guide > [data-touch] { display: inline-flex; }
-  .turbo-sse-guide::before { content: "Touch"; }
-  .turbo-sse-plot:not([data-active]) .turbo-sse-guide::before { content: "Tap the plot to pan\2c\20 zoom and measure"; }
+  .turbo-sse-guide > [data-for], .turbo-sse-tools kbd, .turbo-sse-menu p > :not(:first-child) { display: none !important; }
+  .turbo-sse-guide:is([data-mode=idle], [data-mode=hover]) > [data-touch~=idle], .turbo-sse-guide:is([data-mode=active], [data-mode=big]) > [data-touch~=active] { display: inline-flex; }
+  .turbo-sse-guide b { padding: 0 6px; color: #000; background: linear-gradient(#fbfbfb, #b6b6b6); border-radius: 9px; font-size: 10px; line-height: 18px; text-transform: uppercase; }
   button, .turbo-sse-plot label { height: 32px; padding-inline: 10px; }
 }
 /* Last, so it overrides the page and topbar padding above. */

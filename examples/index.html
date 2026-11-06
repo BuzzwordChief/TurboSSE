@@ -21,17 +21,19 @@
       <p>Device 01. Live thermal response, motor speed, and supply voltage.</p>
     </header>
 
-    <table>
-        <caption>Real-time values</caption>
-        <thead><tr><th>Measurement</th><th>Value</th></tr></thead>
-        <tbody>
-            <tr><th>Inlet temperature</th><td id="temperature-value" data-sse-event="temperature" data-sse-transform="celsius_to_degree">—</td></tr>
-            <tr><th>Outlet temperature</th><td id="outlet-value" data-sse-event="telemetry" data-sse-json="/outlet" data-sse-transform="celsius_to_degree">—</td></tr>
-            <tr><th>Motor speed</th><td><span id="rpm-value" data-sse-event="telemetry" data-sse-json="/rpm">—</span> rpm</td></tr>
-            <tr><th>Supply voltage</th><td id="voltage-value" data-sse-event="telemetry" data-sse-json="/voltage" data-sse-transform="volts_to_millivolts">—</td></tr>
-            <tr><th>Device state</th><td id="device-state" data-sse-event="status" data-sse-format="html">Waiting for device…</td></tr>
-        </tbody>
-    </table>
+    <section>
+      <table>
+          <caption>Real-time values</caption>
+          <thead><tr><th>Measurement</th><th>Value</th></tr></thead>
+          <tbody>
+              <tr><th>Inlet temperature</th><td id="temperature-value" data-sse-event="temperature" data-sse-transform="celsius_to_degree">—</td></tr>
+              <tr><th>Outlet temperature</th><td id="outlet-value" data-sse-event="telemetry" data-sse-json="/outlet" data-sse-transform="celsius_to_degree">—</td></tr>
+              <tr><th>Motor speed</th><td><span id="rpm-value" data-sse-event="telemetry" data-sse-json="/rpm">—</span> rpm</td></tr>
+              <tr><th>Supply voltage</th><td id="voltage-value" data-sse-event="telemetry" data-sse-json="/voltage" data-sse-transform="volts_to_millivolts">—</td></tr>
+              <tr><th>Device state</th><td id="device-state" data-sse-event="status" data-sse-format="html">Waiting for device…</td></tr>
+          </tbody>
+      </table>
+    </section>
 
     <hr />
 

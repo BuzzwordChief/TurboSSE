@@ -51,9 +51,9 @@ class DemoTests(unittest.TestCase):
                     expect(page.locator(".turbo-sse-status")).to_have_text("Connected")
                     expect(page.locator("#device-state")).to_have_text("Running")
                     layout = page.evaluate("""() => {
-                        const [left, right, third] = [...document.querySelectorAll("main > section")].map(s => s.getBoundingClientRect());
+                        const [left, right, third] = [...document.querySelectorAll("main > section:has([data-sse-graph])")].map(s => s.getBoundingClientRect());
                         return {sideBySide: Math.abs(left.top - right.top) < 1 && right.left > left.right, stacked: right.top >= left.bottom, newRow: third.top >= left.bottom,
-                                tableShare: document.querySelector("main > table").getBoundingClientRect().width / document.querySelector("main").clientWidth,
+                                tableFill: document.querySelector("main table").getBoundingClientRect().width / document.querySelector("main table").parentElement.clientWidth,
                                 overflow: document.documentElement.scrollWidth > innerWidth,
                                 table: getComputedStyle(document.querySelector("table")).borderCollapse,
                                 caption: getComputedStyle(document.querySelector("caption")).backgroundImage,
@@ -64,18 +64,17 @@ class DemoTests(unittest.TestCase):
                     self.assertEqual(layout["sideBySide"], columns == 2, (width, layout))
                     self.assertEqual(layout["stacked"], columns == 1, (width, layout))
                     self.assertFalse(layout["overflow"], width)
-                    # At most two plots share a row; a table is as wide as its content.
+                    # At most two sections share a row, and a table fills its section.
                     self.assertTrue(layout["newRow"], (width, layout))
-                    if width > 1000:
-                        self.assertLess(layout["tableShare"], .5, (width, layout))
+                    self.assertAlmostEqual(layout["tableFill"], 1, delta=.01)
                     self.assertEqual(layout["table"], "collapse")
-                    # Gloss belongs to the interface: page captions are quiet titles, plot headers title bars.
-                    # A label-and-value table reads like a menu list, with its values on the right.
-                    self.assertEqual(layout["caption"], "none")
+                    # A table is a panel like a plot: its caption is a title bar with the plot headers' gloss.
+                    # A label-and-value table keeps its values on the right.
+                    self.assertEqual(layout["caption"], layout["plotHeader"])
                     self.assertTrue(layout["plotHeader"].startswith("linear-gradient"), layout)
                     self.assertEqual(layout["value"], "right")
                     self.assertEqual(layout["pre"], "pre-wrap")
-                    self.assertEqual(page.locator("main > table caption").text_content(), "Real-time values")
+                    self.assertEqual(page.locator("main table caption").text_content(), "Real-time values")
                     # The topbar content lines up with the page content, which is at most 1600 px wide.
                     edges = page.evaluate("""() => { const main = document.querySelector("main"), style = getComputedStyle(main), box = main.getBoundingClientRect();
                         return [box.left + parseFloat(style.paddingLeft), box.right - parseFloat(style.paddingRight),

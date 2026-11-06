@@ -261,22 +261,35 @@ class GraphCases:
         self.received(12)
         plot, tools, canvas = self.page.locator('#a .turbo-sse-plot'), self.page.locator('#a .turbo-sse-tools'), self.page.locator('#a canvas')
         box = canvas.bounding_box()
-        hint = 'getComputedStyle(document.querySelector("#a .turbo-sse-guide"), "::before").content'
-        # Inactive: the guide asks for a click, tools stay hidden, and the wheel scrolls the page.
+        hint = 'getComputedStyle(document.querySelector("#a .turbo-sse-tools"), "::before").content'
+        guide = self.page.locator('.turbo-sse-guide')
+        # Before any hover, the guide line at the bottom of the window asks for a click on a plot.
+        expect(guide).to_have_attribute('data-mode', 'idle')
+        expect(guide.locator('[data-for=idle]').first).to_have_text('Click a plot to use it')
+        # Hovering an inactive plot previews the selection: a Click to use key where the controls will appear, an
+        # orange tinted frame, and the guide line names the plot. Tools stay hidden, and the wheel scrolls the page.
         self.page.mouse.move(box['x'] + 300, box['y'] + 100)
-        self.assertEqual(self.page.evaluate(hint), '"Click the plot to pan, zoom and measure"')
+        self.assertEqual(self.page.evaluate(hint), '"Click to use"')
+        expect(guide).to_have_attribute('data-mode', 'hover')
+        expect(guide.locator('[data-for=hover]')).to_have_text('Click to use v')
+        self.assertNotEqual(plot.evaluate('e => getComputedStyle(e).borderTopColor'), 'rgb(58, 58, 58)')
         expect(tools).to_be_hidden()
         expect(self.page.locator('#a [role=toolbar]')).to_be_hidden()
         self.page.mouse.wheel(0, 200)
         self.page.wait_for_function('scrollY > 0')
         self.page.evaluate('scrollTo(0, 0)'); self.page.wait_for_function('scrollY === 0')
-        # The first click only activates: tools appear, the guide lists the keys, and nothing pans.
+        # The first click only activates: tools replace the hint, the guide line lists the keys, and nothing pans.
         box = canvas.bounding_box()
         self.page.mouse.click(box['x'] + 300, box['y'] + 100)
         expect(plot).to_have_attribute('data-active', '')
         expect(tools).to_be_visible()
         expect(self.page.locator('#a [role=toolbar]')).to_be_visible()
-        self.assertEqual(self.page.evaluate(hint), '"Keys"')
+        self.assertEqual(self.page.evaluate(hint), 'none')
+        expect(guide).to_have_attribute('data-mode', 'active')
+        for action in ('Pan', 'Zoom range', 'Measure', 'Markers', 'Live', 'Fit', 'Enlarge', 'Clear'):
+            expect(guide).to_contain_text(action)
+        # One plot needs no Jump key, so its hint stays hidden.
+        expect(guide.locator('[data-jump]')).to_be_hidden()
         expect(self.page.locator('#a [data-action="Live"]')).to_be_checked()
         # Active: the wheel zooms the plot instead of scrolling the page.
         self.page.evaluate('scrollTo(0, 50)'); self.page.wait_for_function('scrollY === 50')
@@ -294,6 +307,7 @@ class GraphCases:
         self.page.mouse.click(5, box['y'] + box['height'] + 200)
         expect(plot).not_to_have_attribute('data-active', '')
         expect(tools).to_be_hidden()
+        expect(guide).to_have_attribute('data-mode', 'idle')
 
     def test_toolbar_clicks_keep_canvas_focus(self):
         self.open('<div id="a" data-sse-graph data-sse-event="v"></div>')
@@ -422,7 +436,7 @@ class GraphCases:
         self.assertEqual([r['value'] for r in rows if r['kind'] == 'value'], ['B2', 'C3', 'B2'])
         self.assertIn('bus lane', self.export_text)
 
-    def test_narrow_plots_keep_one_row_of_keys_and_a_full_guide(self):
+    def test_narrow_plots_keep_one_row_of_keys(self):
         self.open('<div id="n" data-sse-graph data-sse-event="v" style="width:420px"></div>'
                   '<div id="w" data-sse-graph data-sse-event="v" style="width:1100px"></div>')
         self.case.emit('v', '1'); self.received(1)
@@ -434,13 +448,11 @@ class GraphCases:
             name = self.page.locator(plot + ' [data-action=Fit] span')
             (expect(name).to_be_visible if plot == '#w' else expect(name).to_be_hidden)()
             expect(self.page.locator(plot + ' [data-action=Live] + span')).to_be_visible()
-            # The guide lists every key with its action and wraps inside the plot.
-            guide = self.page.locator(plot + ' .turbo-sse-guide')
-            for action in ('Pan', 'Zoom range', 'Measure', 'Markers', 'Clear', 'Jump'):
-                expect(guide).to_contain_text(action)
-            self.assertTrue(guide.evaluate('e => e.scrollWidth <= e.clientWidth'), plot)
-        # Paging through plots is a key of the enlarged view only.
-        expect(self.page.locator('#w .turbo-sse-guide [data-big]')).to_be_hidden()
+        # The keys are listed once, in the guide line, which wraps inside the window; paging is for the enlarged view.
+        guide = self.page.locator('.turbo-sse-guide')
+        self.assertEqual(self.page.locator('.turbo-sse-guide').count(), 1)
+        self.assertTrue(guide.evaluate('e => e.scrollWidth <= e.clientWidth'))
+        expect(guide.locator('[data-for=big]')).to_be_hidden()
 
     def test_jump_menu_finds_plots_and_series_and_jumps_to_them(self):
         self.open('<div style="height:900px"></div>'
@@ -581,8 +593,9 @@ class GraphCases:
         expect(button).to_have_text('ReduceE')
         self.frames()
         big = self.page.evaluate(box, '#b')
-        # The plot fills the window below the topbar, and its plot area takes the spare height.
-        self.assertEqual([big[edge] for edge in ('top', 'left', 'right', 'bottom')], [0, 0, 0, 0], big)
+        # The plot fills the window between the topbar and the guide line, and its plot area takes the spare height.
+        guide = round(self.page.evaluate('document.querySelector(".turbo-sse-guide").getBoundingClientRect().height'))
+        self.assertEqual([big[edge] for edge in ('top', 'left', 'right', 'bottom')], [0, 0, 0, guide], big)
         self.assertGreater(big['canvas'], small['canvas'] * 1.5, big)
         # The page behind keeps its height and scroll position and does not scroll; the other plots are out of reach.
         self.assertEqual((big['page'], big['y']), (small['page'], small['y']))
@@ -604,7 +617,8 @@ class GraphCases:
         # The title bar pages through the plots, ‹ 2/3 ›, and the guide has a square for each. ] and [ step to the
         # neighbours within the same history entry, so Back still returns to the page.
         expect(self.page.locator('#b .turbo-sse-plot nav output')).to_have_text('2/3')
-        expect(self.page.locator('#b .turbo-sse-guide [data-big] i i')).to_have_count(3)
+        expect(self.page.locator('.turbo-sse-guide [data-for=big] i i')).to_have_count(3)
+        expect(self.page.locator('.turbo-sse-guide [data-for=big] [data-on]')).to_have_count(1)
         length = self.page.evaluate('history.length')
         self.page.keyboard.press(']')
         expect(self.page.locator('#l .turbo-sse-plot')).to_have_attribute('data-max', '')
@@ -636,7 +650,7 @@ class GraphCases:
         expect(self.page.locator('#l .turbo-sse-plot')).to_have_attribute('data-max', '')
         self.frames()
         lanes = self.page.evaluate(box, '#l')
-        self.assertEqual((lanes['canvas'], lanes['bottom']), (86, 0), lanes)
+        self.assertEqual((lanes['canvas'], lanes['bottom']), (86, guide), lanes)
         # Destroying the runtime while a plot is enlarged leaves the page as it was.
         self.page.evaluate('TurboSSE.destroy()')
         self.assertEqual(self.page.evaluate('[document.querySelector("#l").style.minHeight, getComputedStyle(document.documentElement).overflowY]'), ['', 'visible'])
@@ -669,17 +683,17 @@ class GraphCases:
             self.case.emit('v', str(i)); self.case.emit('w', str(i)); self.case.emit('x', str(i)); self.page.wait_for_timeout(10)
         self.received(36)
         layout = '[...document.querySelectorAll("#b, #after, #a .turbo-sse-measure tr")].map(e => Math.round(e.getBoundingClientRect().top))'
-        # Idle: the guide shows the keys in the measurement's space, and each series already has its table row.
-        expect(self.page.locator('#a .turbo-sse-guide')).to_contain_text('Measure')
-        expect(self.page.locator('#a .turbo-sse-measure p')).to_be_hidden()
+        # Without markers the panel gives the statistics of the visible window, one row per series.
+        expect(self.page.locator('#a .turbo-sse-measure p')).to_contain_text('View')
+        expect(self.page.locator('#a .turbo-sse-measure tbody tr').first).to_contain_text('12')
         self.assertEqual(self.page.locator('#a .turbo-sse-measure tbody tr').count(), 2)
         before = self.page.evaluate(layout)
         box = self.page.locator('#a canvas').bounding_box()
         self.page.mouse.click(box['x'] + 300, box['y'] + 100)
         self.page.keyboard.down('Shift'); self.page.mouse.move(box['x'] + 150, box['y'] + 100); self.page.mouse.down()
         self.page.mouse.move(box['x'] + 500, box['y'] + 100, steps=5); self.page.mouse.up(); self.page.keyboard.up('Shift')
-        expect(self.page.locator('#b .turbo-sse-measure')).to_contain_text('RMS')
-        expect(self.page.locator('#a .turbo-sse-guide')).to_be_hidden()
+        expect(self.page.locator('#b .turbo-sse-measure p')).to_contain_text('Δt')
+        expect(self.page.locator('#a .turbo-sse-measure p')).not_to_contain_text('View')
         self.frames()
         self.assertEqual(self.page.evaluate(layout), before)
         # Inspecting and hiding a series do not move it either.
@@ -813,11 +827,13 @@ class GraphCases:
         spot = (box['x'] + 300, box['y'] + box['height'] / 2)
         self.page.mouse.click(*spot)
         expect(live).to_be_checked()
-        # Placing marker A stops Live, like a measure drag; the marker band is not a zoom band.
+        # Placing marker A stops Live, like a measure drag; the marker band is not a zoom band, and its line is drawn
+        # under its flag on the canvas, not as a border over it.
         self.page.keyboard.press('a')
         expect(live).not_to_be_checked()
-        expect(selection).to_be_visible()
+        expect(self.page.locator('#a .turbo-sse-measure p')).to_contain_text(re.compile(r'A [\d.]+ s'))
         expect(selection).not_to_have_attribute('data-zoom', '')
+        self.assertEqual(selection.evaluate('e => getComputedStyle(e).borderLeftWidth'), '0px')
         self.page.keyboard.press('Escape')
         # Fit shows everything; Shift with right-drag zooms y; Fit again restores the automatic y range.
         self.page.keyboard.press('f'); self.frames()
@@ -921,7 +937,10 @@ class GraphCases:
         box=self.page.locator('canvas').bounding_box()
         self.page.touchscreen.tap(box['x']+300,box['y']+90)  # The first tap activates the plot.
         self.page.touchscreen.tap(box['x']+120,box['y']+90)
-        expect(self.page.locator('.turbo-sse-selection')).to_be_visible()
+        expect(self.page.locator('.turbo-sse-measure p')).to_contain_text(re.compile(r'A [\d.]+ s'))
+        # The guide line lists gestures instead of keys.
+        expect(self.page.locator('.turbo-sse-guide [data-touch=active]').first).to_be_visible()
+        expect(self.page.locator('.turbo-sse-guide [data-for=active]').first).to_be_hidden()
         self.page.touchscreen.tap(box['x']+400,box['y']+100)
         expect(self.page.locator('.turbo-sse-measure')).to_contain_text('Δt')
         expect(self.page.locator('.turbo-sse-measure')).to_contain_text('mean')

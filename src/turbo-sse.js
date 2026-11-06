@@ -422,12 +422,8 @@
         return b;
       });
       this.readout = make("div", "turbo-sse-readout", "Waiting for data", this.element);
-      // The guide and the measurement share one grid cell, so the panel keeps its height and measuring never moves
-      // the page. The guide pairs each key glyph with what it does; touch screens list gestures instead.
+      // The panel under the plot holds statistics: of the visible window, then of the A/B interval.
       this.measure = make("div", "turbo-sse-measure", undefined, this.element);
-      this.guide = make("div", "turbo-sse-guide", undefined, this.measure);
-      this.guide.innerHTML = '<span><kbd>Drag</kbd> Pan</span><span><kbd class="turbo-sse-sign">←</kbd><kbd class="turbo-sse-sign">→</kbd> Pan</span><span><kbd>Wheel</kbd> Zoom</span><span><kbd class="turbo-sse-sign">+</kbd><kbd class="turbo-sse-sign">−</kbd> Zoom</span><span><kbd>Right-drag</kbd> Zoom range</span><span><kbd>Shift</kbd>+<kbd>Drag</kbd> Measure</span><span><kbd>A</kbd><kbd>B</kbd> Markers</span><span><kbd>Esc</kbd> Clear</span><span><kbd>J</kbd> Jump</span><span data-big><kbd class="turbo-sse-sign">[</kbd><kbd class="turbo-sse-sign">]</kbd> Plots <i></i></span><span data-touch><b>Drag</b> Pan</span><span data-touch><b>Tap</b> Place A</span><span data-touch><b>Tap again</b> Place B</span>';
-      this.squares = this.guide.querySelector("i");
       this.result = make("div", "", undefined, this.measure);
       listen(this.controls, "click", event => {
         const target = event.target.closest("[data-action]"), action = target && target.dataset.action;
@@ -504,6 +500,8 @@
       });
       // A press or focus inside the plot activates it; anywhere else deactivates it, unless the plot is enlarged.
       for (const type of ["pointerdown", "focusin"]) listen(document, type, event => this.activate(this.element.contains(event.target) || this.element.hasAttribute("data-max")));
+      // The guide line at the bottom of the window names a hovered plot that is not in use.
+      for (const type of ["pointerenter", "pointerleave"]) listen(this.element, type, () => { this.hover = type == "pointerenter"; hooks.hint(); });
       listen(document, "pointerdown", () => this.choose());
       // A plot of lanes only is as tall as its band, the marker strip, its lanes and the time axis.
       this.observer = new ResizeObserver(() => {
@@ -516,6 +514,7 @@
     activate(on = true) {
       const was = this.active;
       this.element.toggleAttribute("data-active", this.active = on);
+      if (was !== on) this.hooks.hint();
       return was;
     }
     choose(c) { this.tiles.forEach((t, i) => t.toggleAttribute("data-selected", this.sources[i] === c)); }
@@ -733,13 +732,14 @@
       for (const marker of this.hooks.restarts()) if (marker.time >= g.lo && marker.time <= g.hi) {
         const x = this.x(marker.time); ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, B); ctx.stroke(); ctx.fillText("≈ restart", x + 4, T + 12);
       }
-      // Each marker carries an orange flag with its letter at the top of its line, on the outer side of the interval,
-      // so the line never crosses the letter. A flag with no room there turns inward.
-      ctx.setLineDash([]); ctx.font = SMALL; ctx.textAlign = "center";
-      if (!z) for (const [name, t, other] of [["A", g.a, g.b], ["B", g.b, g.a]]) if (t !== null) {
-        const x = Math.round(this.x(t)), out = (other === null ? name == "B" : t > other) ? 1 : -1, side = x + out * 15 < L || x + out * 15 > end ? -out : out;
-        ctx.fillStyle = "#ff7a00"; ctx.fillRect(side < 0 ? x - 14 : x + 1, T, 14, 14);
-        ctx.fillStyle = "#000"; centered(ctx, name, x + side * 7.5 + .5, T + 7);
+      // Each marker is an orange line with a flag at its top carrying its letter. Both are drawn here, line first,
+      // so the flag lies over its line.
+      ctx.setLineDash([]); ctx.font = SMALL; ctx.textAlign = "center"; ctx.strokeStyle = "#ff7a00";
+      if (!z) for (const [name, t] of [["A", g.a], ["B", g.b]]) if (t !== null) {
+        const x = Math.round(this.x(t)) + .5;
+        ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, B); ctx.stroke();
+        ctx.fillStyle = "#ff7a00"; ctx.beginPath(); ctx.moveTo(x - 7, T); ctx.lineTo(x + 7, T); ctx.lineTo(x + 7, T + 12); ctx.lineTo(x, T + 16); ctx.lineTo(x - 7, T + 12); ctx.fill();
+        ctx.fillStyle = "#000"; centered(ctx, name, x, T + 6.5);
       }
       ctx.restore();
       if (!retained && !this.lanes.some(c => c.last >= 0)) { ctx.textAlign = "center"; ctx.fillStyle = ink; ctx.fillText("Waiting for valid data", L + this.width / 2, h / 2); }
@@ -751,14 +751,20 @@
         (this.sources.some(c => c.history.evicted) ? " <span>Oldest coverage expired</span>" : "");
       this.band(z ? d.t : g.a, z ? d.end : g.b, z);
       this.inspect();
-      // Measurements are an A/B line and tables with one row per series. The row count never changes,
-      // so measuring never shifts the page.
-      const both = g.a !== null && g.b !== null, lo = Math.min(g.a, g.b), hi = Math.max(g.a, g.b), dt = hi - lo;
-      // The A/B line sets each value after its small label, as a camera's shooting screen does.
+      // The panel under the plot gives statistics of the visible window until markers are placed, then of the A/B
+      // interval: a line with the interval, and tables with one row per series. The rows never change, so placing
+      // markers never shifts the page. A live window's statistics follow it at most four times a second.
+      const view = g.a === null && g.b === null, both = g.a !== null && g.b !== null, span = view || both;
+      this.measure.toggleAttribute("data-idle", view);
+      if (view && g.live && performance.now() - this.counted < 250) return;
+      this.counted = performance.now();
+      const lo = view ? g.lo : Math.min(g.a, g.b), hi = view ? g.hi : Math.max(g.a, g.b), dt = hi - lo;
+      // The line sets each value after its small label, as a camera's shooting screen does.
       const mark = (label, v, unit) => `<span><small>${label}</small> <b>${format(v)}${Number.isFinite(v) ? " " + unit : ""}</b></span>`;
-      const first = mark("A", g.a ?? NaN, "s") + " " + mark("B", g.b ?? NaN, "s") + (both ? " " + mark("Δt", dt, "s") + " " + mark("1/Δt", dt ? 1 / dt : NaN, "Hz") : "");
+      const first = view ? `<span><small>View</small> <b>${format(lo)}–${format(hi)} s</b></span> ` + mark("Δt", dt, "s") :
+        mark("A", g.a ?? NaN, "s") + " " + mark("B", g.b ?? NaN, "s") + (both ? " " + mark("Δt", dt, "s") + " " + mark("1/Δt", dt ? 1 / dt : NaN, "Hz") : "");
       const rows = this.series.map(c => {
-        const a = both && c.history.range(lo, hi), row = [c.label + (c.unit ? " (" + c.unit + ")" : ""), both ? 0 : "—", "—", "—", "—", "—", "—", "—", "—", "—"];
+        const a = span && c.history.range(lo, hi), row = [c.label + (c.unit ? " (" + c.unit + ")" : ""), span ? 0 : "—", "—", "—", "—", "—", "—", "—", "—", "—"];
         if (!a || !a[5]) return row;
         const sd = a[9], left = c.history.nearest(lo), right = c.history.nearest(hi);
         row.splice(1, 7, a[5], format(a[6]), format(a[7]), format(a[7] - a[6]), format(a[8]), format(Math.hypot(a[8], sd)), format(sd));
@@ -770,11 +776,11 @@
         if (a[0] < lo || a[1] > hi) row[0] += ` · summary ${format(a[0])}–${format(a[1])} s`;
         return row;
       });
-      // Lanes: the values held at A and B, the changes between them, the distinct values, and the value held longest.
-      // Summarized history makes the counts lower bounds.
+      // Lanes: the values held at the start and end, the changes between them, the distinct values, and the value
+      // held longest. Summarized history makes the counts lower bounds.
       const at = (c, t) => { const p = c.history.nearest(t, true); return !p ? "—" : p.summary ? "…" : p.a[8] >= 0 ? c.values[p.a[8]] : "—"; };
       const lanes = this.lanes.map(c => {
-        if (!both) return [c.label, "—", "—", "—", "—", "—"];
+        if (!span) return [c.label, "—", "—", "—", "—", "—"];
         const time = new Map(), p = c.history.nearest(lo, true);
         let from = lo, value = p && !p.summary ? p.a[8] : -1, changes = 0, more = "", best = -1, longest = 0;
         const hold = t => { if (value >= 0 && t > from) time.set(value, (time.get(value) || 0) + t - from); from = Math.max(from, t); };
@@ -785,13 +791,12 @@
         }
         hold(Math.min(hi, now));
         for (const [v, held] of time) if (held > longest) { best = v; longest = held; }
-        return [c.label, at(c, g.a), at(c, g.b), more + changes, more + time.size, best < 0 ? "—" : `${c.values[best]} ${format(longest)} s (${Math.round(100 * longest / (dt || 1))}%)`];
+        return [c.label, at(c, view ? lo : g.a), at(c, view ? hi : g.b), more + changes, more + time.size, best < 0 ? "—" : `${c.values[best]} ${format(longest)} s (${Math.round(100 * longest / (dt || 1))}%)`];
       });
       const tables = [];
       if (this.series.length) tables.push([["Series", "n", "min", "max", "p-p", "mean", "RMS", "σ", "Δy", "slope /s"], rows, this.series]);
-      if (this.lanes.length) tables.push([["Lane", "At A", "At B", "Changes", "Distinct", "Longest"], lanes, this.lanes]);
+      if (this.lanes.length) tables.push([["Lane", view ? "At start" : "At A", view ? "At end" : "At B", "Changes", "Distinct", "Longest"], lanes, this.lanes]);
       const text = JSON.stringify([first, tables.map(t => t.slice(0, 2))]);
-      this.measure.toggleAttribute("data-idle", g.a === null && g.b === null);
       if (text !== this.rows) {
         this.rows = text;
         const line = make("p", ""); line.innerHTML = first;
@@ -846,6 +851,23 @@
     const [status, retryButton, uptimeDisplay, counter, note, jumpButton, exportButton, menu] = bar.children;
     const [query, pageCount] = menu.querySelectorAll("input, output"), list = menu.querySelector("ul"), [pages, , , , found] = menu.querySelector("p").children;
     root.prepend(bar);
+    // The guide line along the bottom of the window shows the keys once for the page, as a camera's bottom line does:
+    // which plot to click, then the keys of the plot in use, and in the enlarged view the paging keys with a square
+    // for each plot. Touch screens list gestures instead.
+    const guide = make("div", "turbo-sse-guide", undefined, root);
+    guide.innerHTML = '<span data-for="idle"><b>Click a plot</b> to use it</span><span data-for="hover"><kbd>Click</kbd> to use <b></b></span>' +
+      [["<kbd>Drag</kbd>", "Pan"], ['<kbd class="turbo-sse-sign">←</kbd><kbd class="turbo-sse-sign">→</kbd>', "Pan"], ["<kbd>Wheel</kbd>", "Zoom"], ['<kbd class="turbo-sse-sign">+</kbd><kbd class="turbo-sse-sign">−</kbd>', "Zoom"],
+       ["<kbd>Right-drag</kbd>", "Zoom range"], ["<kbd>Shift</kbd>+<kbd>Drag</kbd>", "Measure"], ["<kbd>A</kbd><kbd>B</kbd>", "Markers"], ["<kbd>L</kbd>", "Live"], ["<kbd>F</kbd>", "Fit"], ["<kbd>E</kbd>", "Enlarge"], ["<kbd>Esc</kbd>", "Clear"]]
+        .map(([keys, action]) => `<span data-for="active">${keys} ${action}</span>`).join("") +
+      '<span data-for="big"><kbd class="turbo-sse-sign">[</kbd><kbd class="turbo-sse-sign">]</kbd> Plots <i></i></span><span data-for="idle hover active" data-jump><kbd>J</kbd> Jump</span>' +
+      '<span data-touch="idle hover"><b>Tap a plot</b> to use it</span><span data-touch="active"><b>Drag</b> Pan</span><span data-touch="active"><b>Tap</b> Place A</span><span data-touch="active"><b>Tap again</b> Place B</span>';
+    const [hoverName, squares] = guide.querySelectorAll("[data-for=hover] b, [data-for=big] i"), jumpHint = guide.querySelector("[data-jump]");
+    function hint() {
+      const all = Array.from(plots.values()), hovered = all.find(p => p.hover && !p.active);
+      guide.hidden = !all.length;
+      guide.dataset.mode = big ? "big" : all.some(p => p.active) ? "active" : hovered ? "hover" : "idle";
+      put(hoverName, hovered ? hovered.title : "");
+    }
 
     function configError(error) {
       counts.configErrors++;
@@ -936,9 +958,11 @@
         put(p.full.firstChild, max ? "Reduce" : "Enlarge");
         // The title bar counts the plots, ‹ 2/4 ›, and the guide shows a square for each, the current one orange.
         put(p.page, all.indexOf(p) + 1 + "/" + all.length);
-        if (max) p.squares.innerHTML = all.map(q => q === p ? "<i data-on></i>" : "<i></i>").join("");
+        // The plot keeps its place clear of the guide line at the bottom of the window.
+        e.style.bottom = max ? guide.offsetHeight + "px" : "";
       }
-      invalidate();
+      squares.innerHTML = all.map(q => q === big ? "<i data-on></i>" : "<i></i>").join("");
+      hint(); invalidate();
     }
 
     // Steps the enlarged view to a neighbouring plot. The enlarged view keeps its one history entry.
@@ -1273,7 +1297,7 @@
           let plot = plots.get(host);
           if (plot && (plot.signature !== signature || plot.view !== view)) { plot.destroy(); plot = null; }
           if (!plot) plot = new Plot(host, series, view, {invalidate, extent, restarts: () => restarts,
-            cursor: g => { for (const p of plots.values()) if (p.view === g) p.inspect(); }, export: showExports, enlarge, page, now: () => (performance.now() - started) / 1000});
+            cursor: g => { for (const p of plots.values()) if (p.view === g) p.inspect(); }, export: showExports, enlarge, page, hint: () => hint(), now: () => (performance.now() - started) / 1000});
           plot.signature = signature;
           nextPlots.set(host, plot);
         } catch (error) { configError(error); }
@@ -1282,7 +1306,7 @@
       plots = nextPlots; groups = nextGroups; elements = next;
       // Jumping needs two plots; with fewer, the key and its hint go.
       jumpButton.hidden = plots.size < 2;
-      for (const p of plots.values()) p.guide.children[8].hidden = jumpButton.hidden;
+      jumpHint.hidden = jumpButton.hidden;
       if (jumpButton.hidden) jump(false); else if (!menu.hidden) search();
       enlarge(); counters();
     }
@@ -1538,7 +1562,7 @@
         exportButton.removeEventListener("click", exportClick);
         retryButton.removeEventListener("click", retry);
         closeExports();
-        bar.remove();
+        bar.remove(); guide.remove();
         for (const p of plots.values()) p.destroy();
         for (const b of elements.values()) if (b.series && !b.directGraph) b.element.hidden = b.wasHidden;
         plots.clear(); channels.clear(); groups.clear(); restarts.length = 0;
