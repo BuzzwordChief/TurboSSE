@@ -55,15 +55,20 @@ class DemoTests(unittest.TestCase):
                         return {sideBySide: Math.abs(left.top - right.top) < 1 && right.left > left.right, stacked: right.top >= left.bottom,
                                 overflow: document.documentElement.scrollWidth > innerWidth,
                                 table: getComputedStyle(document.querySelector("table")).borderCollapse,
-                                caption: getComputedStyle(document.querySelector("caption")).backgroundColor,
-                                plotHeader: getComputedStyle(document.querySelector(".turbo-sse-plot > header")).backgroundColor,
+                                caption: getComputedStyle(document.querySelector("caption")).backgroundImage,
+                                plotHeader: getComputedStyle(document.querySelector(".turbo-sse-plot > header")).backgroundImage,
+                                value: getComputedStyle(document.querySelector("tbody td")).textAlign,
                                 pre: getComputedStyle(document.querySelector("pre")).whiteSpace};
                     }""")
                     self.assertEqual(layout["sideBySide"], columns == 2, (width, layout))
                     self.assertEqual(layout["stacked"], columns == 1, (width, layout))
                     self.assertFalse(layout["overflow"], width)
                     self.assertEqual(layout["table"], "collapse")
-                    self.assertEqual(layout["caption"], layout["plotHeader"])
+                    # Gloss belongs to the interface: page captions are quiet titles, plot headers title bars.
+                    # A label-and-value table reads like a menu list, with its values on the right.
+                    self.assertEqual(layout["caption"], "none")
+                    self.assertTrue(layout["plotHeader"].startswith("linear-gradient"), layout)
+                    self.assertEqual(layout["value"], "right")
                     self.assertEqual(layout["pre"], "pre-wrap")
                     self.assertEqual(page.locator("main > table caption").inner_text(), "Real-time values")
                     # The topbar content lines up with the page content, which is at most 2560 px wide.
@@ -74,7 +79,7 @@ class DemoTests(unittest.TestCase):
                     self.assertAlmostEqual(edges[2], edges[0], delta=1, msg=(width, edges))
                     self.assertAlmostEqual(edges[3], edges[1], delta=1, msg=(width, edges))
                     self.assertLessEqual(edges[4], 2560)
-                    # Rotated y tick labels keep the y-axis gutter narrow; it widens only for the lane names.
+                    # Horizontal y labels still keep the y-axis gutter narrow; it widens only for the lane names.
                     self.assertTrue(all(int(left[:-2]) <= 72 for left in page.evaluate('[...document.querySelectorAll(".turbo-sse-tools")].map(t => t.style.left)')), width)
                     # The plot band stays one row, so it takes little from the fixed-height plot area.
                     self.assertTrue(all(h <= 24 for h in page.evaluate('[...document.querySelectorAll(".turbo-sse-tools")].map(t => t.offsetHeight)')), width)
@@ -95,7 +100,7 @@ class DemoTests(unittest.TestCase):
                 expect(page.locator('#voltage-value')).to_contain_text("mV")
                 expect(page.locator('#device-state')).to_have_text("Running")
                 page.wait_for_function("TurboSSE.stats().retained >= 6")
-                expect(page.locator(".turbo-sse-counts")).not_to_contain_text("Captured: 0")
+                expect(page.locator(".turbo-sse-counts")).not_to_contain_text("Captured 0")
                 output = ROOT / "test-results"
                 output.mkdir(exist_ok=True)
                 page.screenshot(path=str(output / "demo.png"), full_page=True)
@@ -111,6 +116,13 @@ class DemoTests(unittest.TestCase):
                     self.assertIn(controller[0]["value"], ("IDLE", "RAMP UP", "RUN", "RAMP DOWN"))
                     self.assertIn("lane", z.read("export.txt").decode("utf-8"))
                 expect(page.locator(".turbo-sse-uptime")).to_contain_text("Uptime ≈")
+                # J, two letters and Enter reach every plot of the example.
+                for host in page.locator("[data-sse-graph]").all():
+                    title = host.locator(".turbo-sse-plot > header strong").inner_text()
+                    page.keyboard.press("j")
+                    page.locator(".turbo-sse-menu input").fill(title[:2].lower())
+                    page.keyboard.press("Enter")
+                    expect(host.locator(".turbo-sse-plot")).to_have_attribute("data-active", "")
                 self.assertEqual(errors, [])
             finally:
                 browser.close()

@@ -277,6 +277,9 @@ class BrowserCases:
         self.case.status = 204
         self.page.goto(url)
         self.text(".turbo-sse-status", "Disconnected")
+        # The lit tab and the rule turn red, and Retry stands right after the tab.
+        expect(self.page.locator(".turbo-sse-bar")).to_have_attribute("data-state", "disconnected")
+        self.assertEqual(self.page.evaluate('document.querySelector(".turbo-sse-status").nextElementSibling.className'), "turbo-sse-retry")
         self.page.wait_for_timeout(200)
         self.assertEqual(len(self.case.requests), 1)
         self.case.status = 200
@@ -284,6 +287,30 @@ class BrowserCases:
         self.text(".turbo-sse-status", "Connected")
         self.case.emit("v", "recovered")
         self.text("#v", "recovered")
+
+    def test_topbar_readouts_activity_lamp_and_unsaved_dot(self):
+        self.open('<span id="v" data-sse-event="v" data-sse-json="/x"></span>')
+        expect(self.page.locator(".turbo-sse-bar")).to_have_attribute("data-state", "connected")
+        # Readouts are small labels before values. Losses and errors appear only once they count something, in yellow.
+        counts = self.page.locator(".turbo-sse-counts")
+        expect(counts).to_have_text("Captured 0 Evicted 0")
+        expect(self.page.locator(".turbo-sse-uptime small")).to_have_text("Uptime")
+        self.page.evaluate("""window.pulses = 0; new MutationObserver(r => r.forEach(m => m.target.hasAttribute("data-pulse") && pulses++))
+            .observe(document.querySelector(".turbo-sse-status"), {attributes: true})""")
+        self.case.emit("v", "{broken")
+        self.received(1)
+        expect(counts.locator("[data-warn]")).to_have_text("JSON errors 1")
+        expect(counts).to_contain_text("Captured 1")
+        # The activity lamp in the state tab flashes with incoming events.
+        self.page.wait_for_function("pulses > 0")
+        # Export All carries a dot while data has not been exported.
+        export = self.page.locator(".turbo-sse-export")
+        expect(export).to_have_attribute("data-unsaved", "")
+        with self.page.expect_download():
+            self.page.evaluate("TurboSSE.exportCSV()")
+        expect(export).not_to_have_attribute("data-unsaved", "")
+        # Jumping needs at least two plots.
+        expect(self.page.locator(".turbo-sse-jump")).to_be_hidden()
 
     def test_empty_id_resets_native_resume_header(self):
         self.open('<span data-sse-event="v"></span>')
@@ -337,7 +364,7 @@ class BrowserCases:
         self.case.emit("v", "healthy")
         self.text("#good", "healthy")
         self.assertEqual(self.stats()["configErrors"], 3)
-        expect(self.page.locator(".turbo-sse-counts")).to_contain_text("Config errors: 3")
+        expect(self.page.locator(".turbo-sse-counts")).to_contain_text("Config errors 3")
 
     def test_omission_only_filters_raw_capture(self):
         self.open('<span id="v" data-sse-event="v"></span>'

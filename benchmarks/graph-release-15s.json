@@ -5,7 +5,7 @@
   "channels": 8,
   "sent": 1515,
   "sample_groups": 1500,
-  "elapsed_seconds": 15.391,
+  "elapsed_seconds": 15.376,
   "stats": {
     "received": 1515,
     "evicted": 0,
@@ -21,10 +21,10 @@
     "markerEvictions": 0,
     "state": "Reconnecting",
     "retained": 1515,
-    "bytes": 444190,
+    "bytes": 444148,
     "lastEventId": "sample:1499",
     "uptime": null,
-    "lastUptime": 14.000251,
+    "lastUptime": 14.001959,
     "segment": 0,
     "graphs": {
       "bytes": 339968,
@@ -40,8 +40,8 @@
           "bytes": 42496,
           "samples": 1500,
           "gaps": 1,
-          "from": 0.03370000001788139,
-          "to": 15.03240000000596
+          "from": 0.04,
+          "to": 15.03660000000149
         },
         {
           "id": 2,
@@ -53,8 +53,8 @@
           "bytes": 42496,
           "samples": 1500,
           "gaps": 1,
-          "from": 0.03370000001788139,
-          "to": 15.03240000000596
+          "from": 0.04,
+          "to": 15.03660000000149
         },
         {
           "id": 3,
@@ -66,8 +66,8 @@
           "bytes": 42496,
           "samples": 1500,
           "gaps": 1,
-          "from": 0.03370000001788139,
-          "to": 15.03240000000596
+          "from": 0.04,
+          "to": 15.03660000000149
         },
         {
           "id": 4,
@@ -79,8 +79,8 @@
           "bytes": 42496,
           "samples": 1500,
           "gaps": 1,
-          "from": 0.03370000001788139,
-          "to": 15.03240000000596
+          "from": 0.04,
+          "to": 15.03660000000149
         },
         {
           "id": 5,
@@ -92,8 +92,8 @@
           "bytes": 42496,
           "samples": 1500,
           "gaps": 1,
-          "from": 0.03370000001788139,
-          "to": 15.03240000000596
+          "from": 0.04,
+          "to": 15.03660000000149
         },
         {
           "id": 6,
@@ -105,8 +105,8 @@
           "bytes": 42496,
           "samples": 1500,
           "gaps": 1,
-          "from": 0.03370000001788139,
-          "to": 15.03240000000596
+          "from": 0.04,
+          "to": 15.03660000000149
         },
         {
           "id": 7,
@@ -118,8 +118,8 @@
           "bytes": 42496,
           "samples": 1500,
           "gaps": 1,
-          "from": 0.03370000001788139,
-          "to": 15.03240000000596
+          "from": 0.04,
+          "to": 15.03660000000149
         },
         {
           "id": 8,
@@ -131,8 +131,8 @@
           "bytes": 42496,
           "samples": 1500,
           "gaps": 1,
-          "from": 0.03370000001788139,
-          "to": 15.03240000000596
+          "from": 0.04,
+          "to": 15.03660000000149
         }
       ]
     }
@@ -141,54 +141,54 @@
   "heap_samples": [
     {
       "seconds": 0.01,
-      "usedSize": 1415116,
+      "usedSize": 1384720,
       "totalSize": 2392064,
-      "embedderHeapUsedSize": 1848000,
-      "backingStorageSize": 147035
+      "embedderHeapUsedSize": 2390440,
+      "backingStorageSize": 167834
     },
     {
-      "seconds": 15.07,
-      "usedSize": 2742384,
+      "seconds": 15.05,
+      "usedSize": 2744644,
       "totalSize": 3473408,
-      "embedderHeapUsedSize": 1715144,
-      "backingStorageSize": 649231
+      "embedderHeapUsedSize": 2403800,
+      "backingStorageSize": 666722
     }
   ],
   "exports": [
     {
-      "seconds": 7.07,
-      "duration_ms": 162.52,
+      "seconds": 7.06,
+      "duration_ms": 150.64,
       "files": 9
     },
     {
-      "seconds": 14.07,
-      "duration_ms": 180.98,
+      "seconds": 14.05,
+      "duration_ms": 181.05,
       "files": 9
     }
   ],
-  "canvas_draws": 1664,
-  "average_draws_per_configured_panel_second": 27.733333333333334,
+  "canvas_draws": 1592,
+  "average_draws_per_configured_panel_second": 26.533333333333335,
   "cursor_handler": {
-    "p95_ms": 0.3999999761581421,
-    "max_ms": 0.5
+    "p95_ms": 3,
+    "max_ms": 3.2000000029802322
   },
   "cursor_next_frame": {
-    "p95_ms": 17.400000005960464,
-    "max_ms": 17.5
+    "p95_ms": 17.399999998509884,
+    "max_ms": 17.399999998509884
   },
   "receive": {
-    "p95_ms": 0.10000002384185791,
-    "max_ms": 0.30000001192092896,
-    "mean_ms": 0.022244226125994138
+    "p95_ms": 0.10000000149011612,
+    "max_ms": 0.30000000447034836,
+    "mean_ms": 0.028118812029707944
   },
   "render": {
-    "p95_ms": 3.0999999940395355,
-    "max_ms": 7.0999999940395355,
-    "mean_ms": 1.1239202654572948
+    "p95_ms": 5.600000001490116,
+    "max_ms": 7.699999995529652,
+    "mean_ms": 2.0592469545957917
   },
   "browser": "140.0.7339.16",
   "python": "3.15.2",
   "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
-  "asset_sha256": "bb91c53a1ee147af494065e52fb2843393e96d763ba33055746317d7aed86ca8",
+  "asset_sha256": "1ea2c142b8947f56f01d8a9018ef940d72cbadd34b0cdeedff11218163f60d48",
   "note": "History mode is accelerated production-store ingestion, not wall-clock streaming. Soak is actual SSE/Canvas/export elapsed time. Callback timings exclude paint; heap counters do not describe total process memory."
 }

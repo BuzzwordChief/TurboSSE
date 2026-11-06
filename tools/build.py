@@ -9,7 +9,7 @@ import rjsmin
 
 ROOT = Path(__file__).resolve().parents[1]
 SIZE_TARGET = 8192
-SIZE_BUDGET = 23040
+SIZE_BUDGET = 28160
 
 
 # Each header is named after the asset it embeds, plus ".h".

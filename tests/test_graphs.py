@@ -1,4 +1,5 @@
 """Browser-level graph, shared history, interaction and CSV integration checks."""
+import base64
 import csv
 import io
 import re
@@ -49,11 +50,13 @@ class GraphCases:
         expect(self.page.locator('.turbo-sse-export')).to_have_text('Export All')
         files = self.export_files()
         self.assertEqual(list(files), ['raw-events.csv', 's01-Volts.csv', 's02-w.csv'])
+        # Each series' badge carries its export file's number.
+        self.assertEqual(self.page.locator('.turbo-sse-series-name').evaluate_all('e => e.map(n => n.dataset.n)'), ['1', '2'])
         self.assertEqual(len(files['raw-events.csv']), 12)
         self.assertIn('All retained data', self.export_text)
         self.assertIn('raw-events.csv · 12 retained original events', self.export_text)
         self.assertEqual(self.page.locator('.turbo-sse-export-panel').count(), 0)
-        expect(self.page.locator('.turbo-sse-bar output')).to_have_text('')
+        expect(self.page.locator('.turbo-sse-bar > output')).to_have_text('')
         # Export view of one plot also downloads a ZIP, even for its single CSV.
         box = self.page.locator('#a canvas').bounding_box()
         self.page.mouse.click(box['x'] + 200, box['y'] + 100)
@@ -63,7 +66,7 @@ class GraphCases:
         # A failed export reports its reason next to the button and releases it for a retry.
         self.page.evaluate('() => { URL.createObjectURL = () => { throw new Error("Download blocked") }; }')
         self.page.locator('.turbo-sse-export').click()
-        expect(self.page.locator('.turbo-sse-bar output')).to_have_text('Download blocked')
+        expect(self.page.locator('.turbo-sse-bar > output')).to_have_text('Download blocked')
         expect(self.page.locator('.turbo-sse-export')).to_be_enabled()
 
     def raw_rows(self):
@@ -211,7 +214,7 @@ class GraphCases:
         expect(self.page.locator('#a [data-action="Live"]')).not_to_be_checked()
         expect(self.page.locator('#b [data-action="Live"]')).not_to_be_checked()
         self.page.mouse.move(1, 1)
-        expect(self.page.locator('#a .turbo-sse-readout')).to_contain_text('Inspecting')
+        expect(self.page.locator('#a .turbo-sse-readout')).to_contain_text('Hold')
         self.page.keyboard.down('Shift')
         self.page.mouse.move(box['x'] + 170, box['y'] + 100)
         self.page.mouse.down()
@@ -258,22 +261,22 @@ class GraphCases:
         self.received(12)
         plot, tools, canvas = self.page.locator('#a .turbo-sse-plot'), self.page.locator('#a .turbo-sse-tools'), self.page.locator('#a canvas')
         box = canvas.bounding_box()
-        hint = 'getComputedStyle(document.querySelector("#a .turbo-sse-tools"), "::before").content'
-        # Inactive: hovering asks for a click, tools stay hidden, and the wheel scrolls the page.
+        hint = 'getComputedStyle(document.querySelector("#a .turbo-sse-guide"), "::before").content'
+        # Inactive: the guide asks for a click, tools stay hidden, and the wheel scrolls the page.
         self.page.mouse.move(box['x'] + 300, box['y'] + 100)
-        self.assertEqual(self.page.evaluate(hint), '"Click to interact"')
+        self.assertEqual(self.page.evaluate(hint), '"Click the plot to pan, zoom and measure"')
         expect(tools).to_be_hidden()
         expect(self.page.locator('#a [role=toolbar]')).to_be_hidden()
         self.page.mouse.wheel(0, 200)
         self.page.wait_for_function('scrollY > 0')
         self.page.evaluate('scrollTo(0, 0)'); self.page.wait_for_function('scrollY === 0')
-        # The first click only activates: tools appear, the message goes, and nothing pans.
+        # The first click only activates: tools appear, the guide lists the keys, and nothing pans.
         box = canvas.bounding_box()
         self.page.mouse.click(box['x'] + 300, box['y'] + 100)
         expect(plot).to_have_attribute('data-active', '')
         expect(tools).to_be_visible()
         expect(self.page.locator('#a [role=toolbar]')).to_be_visible()
-        self.assertEqual(self.page.evaluate(hint), 'none')
+        self.assertEqual(self.page.evaluate(hint), '"Keys"')
         expect(self.page.locator('#a [data-action="Live"]')).to_be_checked()
         # Active: the wheel zooms the plot instead of scrolling the page.
         self.page.evaluate('scrollTo(0, 50)'); self.page.wait_for_function('scrollY === 50')
@@ -331,7 +334,7 @@ class GraphCases:
         self.assertEqual(self.stats()['configErrors'], 0)  # A lane may share a panel with a series of any unit.
         entry = self.page.locator('#a .turbo-sse-legend > *').nth(1)
         expect(entry.locator('.turbo-sse-series-value')).to_have_text('FAULT')
-        self.assertTrue(entry.evaluate('e => e.style.getPropertyValue("--series-color")').startswith('hsl('))
+        self.assertTrue(entry.evaluate('e => e.style.getPropertyValue("--value-color")').startswith('oklch('))
         self.frames()
         self.assertTrue({'IDLE', 'RUN', 'State'} <= set(self.page.evaluate('labels')), self.page.evaluate('labels'))
         # The plot grows by one lane row, and the measurement block gains a lane table.
@@ -348,12 +351,12 @@ class GraphCases:
         for plot, event, value in (('#a', 's', 'S2'), ('#a', 's', 'S3'), ('#b', 't', 'S3')):
             self.case.emit(event, value)
             expect(self.page.locator(plot + ' .turbo-sse-series-value')).to_have_text(value)
-            colors[plot, value] = self.page.locator(plot + ' .turbo-sse-legend > *').evaluate('e => e.style.getPropertyValue("--series-color")')
+            colors[plot, value] = self.page.locator(plot + ' .turbo-sse-legend > *').evaluate('e => e.style.getPropertyValue("--value-color")')
         # S2 and S3 hash to the same first color. Sharing a lane, the later value takes its second color;
         # alone in another lane, S3 keeps its first color.
         self.assertNotEqual(colors['#a', 'S2'], colors['#a', 'S3'])
         self.assertEqual(colors['#b', 'S3'], colors['#a', 'S2'])
-        self.assertEqual(colors['#a', 'S2'], 'hsl(245,90%,70%)')
+        self.assertEqual(colors['#a', 'S2'], 'oklch(.8 .14 255)')
 
     def test_logic_lane_levels_and_invalid_values(self):
         self.open('<div id="p" data-sse-graph data-sse-event="p" data-sse-discrete="logic" data-sse-label="Pump"></div>'
@@ -372,8 +375,8 @@ class GraphCases:
         for state in ['A1', 'B2', 'C3', 'B2']:
             self.case.emit('s', state); self.page.wait_for_timeout(300)
         self.received(4)
-        # A plot of lanes only has no y axis; its height follows its lanes.
-        self.assertEqual(self.page.locator('#l .turbo-sse-area').evaluate('e => e.style.height'), '80px')
+        # A plot of lanes only has no y axis; its height follows its controls band and its lanes.
+        self.assertEqual(self.page.locator('#l .turbo-sse-area').evaluate('e => e.style.height'), '86px')
         changes = [float(r['elapsed_start_s']) for r in self.export_files()['s01-State.csv'] if r['kind'] == 'value']
         self.assertEqual(len(changes), 4)
         canvas = self.page.locator('#l canvas'); box = canvas.bounding_box()
@@ -383,14 +386,14 @@ class GraphCases:
         lo = float(re.search(r'([-\d.e+]+)–', self.page.locator('#l .turbo-sse-readout').inner_text()).group(1))
         left = int(self.page.locator('#l .turbo-sse-tools').evaluate('e => e.style.left')[:-2]) - 2
         width = self.page.evaluate('document.querySelector("#l canvas").clientWidth') - left - 16
-        top = self.page.evaluate('document.querySelector("#l .turbo-sse-tools").offsetHeight') + 6
+        top = self.page.evaluate('document.querySelector("#l .turbo-sse-tools").offsetHeight') + 10
         x = lambda t: box['x'] + left + (t - lo) / span * width
         # Markers placed within 5 px of a change over the lane stick to it.
         self.page.mouse.move(x(changes[1]) + 3, box['y'] + top + 24); self.page.keyboard.press('a')
         self.page.mouse.move(x(changes[3]) - 3, box['y'] + top + 24); self.page.keyboard.press('b')
         self.frames()
-        first = self.page.locator('#l .turbo-sse-measure p').inner_text()
-        a, b = map(float, re.match(r'A ([-\d.e+]+) s · B ([-\d.e+]+) s', first).groups())
+        first = self.page.locator('#l .turbo-sse-measure p').text_content()
+        a, b = map(float, re.match(r'A ([-\d.e+]+) s B ([-\d.e+]+) s', first).groups())
         self.assertAlmostEqual(a, changes[1], places=3); self.assertAlmostEqual(b, changes[3], places=3)
         cells = self.page.locator('#l .turbo-sse-measure tbody td').all_inner_texts()
         self.assertEqual(cells[:4], ['B2', 'B2', '2', '2'], cells)  # At A, at B, changes, distinct values
@@ -399,31 +402,136 @@ class GraphCases:
         self.assertEqual([r['value'] for r in rows if r['kind'] == 'value'], ['B2', 'C3', 'B2'])
         self.assertIn('bus lane', self.export_text)
 
-    def test_cut_off_key_legend_fades_and_shows_in_full_on_hover(self):
-        self.open('<div id="n" data-sse-graph data-sse-event="v" style="width:520px"></div>'
+    def test_narrow_plots_keep_one_row_of_keys_and_a_full_guide(self):
+        self.open('<div id="n" data-sse-graph data-sse-event="v" style="width:420px"></div>'
                   '<div id="w" data-sse-graph data-sse-event="v" style="width:1100px"></div>')
         self.case.emit('v', '1'); self.received(1)
-        narrow, wide = self.page.locator('#n .turbo-sse-tools > span'), self.page.locator('#w .turbo-sse-tools > span')
-        full = self.page.locator('#n .turbo-sse-hint + .turbo-sse-hint')
-        box = self.page.locator('#n canvas').bounding_box()
-        self.page.mouse.click(box['x'] + 300, box['y'] + 120)
-        # A legend that does not fit is cut off and fades out; a legend that fits shows plainly.
-        expect(narrow).to_have_attribute('data-more', '')
-        expect(wide).not_to_have_attribute('data-more', '')
-        self.assertNotEqual(narrow.evaluate('e => getComputedStyle(e).maskImage'), 'none')
-        expect(full).to_be_hidden()
-        self.assertEqual(full.get_attribute('aria-hidden'), 'true')
-        height = self.page.evaluate('document.querySelector("#n .turbo-sse-tools").offsetHeight')
-        # Hovering shows the full legend over the plot without changing the band.
-        legend = self.page.locator('#n .turbo-sse-hint').first.bounding_box()
-        self.page.mouse.move(legend['x'] + 40, legend['y'] + legend['height'] / 2)
-        expect(full).to_be_visible()
-        self.assertGreater(full.bounding_box()['height'], legend['height'])
-        # The full legend lies above the toolbar, whose masked icons would otherwise show through it.
-        self.assertEqual(full.evaluate('e => getComputedStyle(e).zIndex'), '1')
-        self.assertEqual(self.page.evaluate('document.querySelector("#n .turbo-sse-tools").offsetHeight'), height)
-        self.page.mouse.move(box['x'] + 300, box['y'] + 150)
-        expect(full).to_be_hidden()
+        for plot in ('#n', '#w'):
+            box = self.page.locator(plot + ' canvas').bounding_box()
+            self.page.mouse.click(box['x'] + 200, box['y'] + 120)
+            # The keys stay one row above the data: a narrow plot shows their icons, a wide one also their names.
+            self.assertLessEqual(self.page.locator(plot + ' .turbo-sse-tools').evaluate('e => e.offsetHeight'), 24)
+            name = self.page.locator(plot + ' [data-action=Fit] span')
+            (expect(name).to_be_visible if plot == '#w' else expect(name).to_be_hidden)()
+            expect(self.page.locator(plot + ' [data-action=Live] + span')).to_be_visible()
+            # The guide lists every key with its action and wraps inside the plot.
+            guide = self.page.locator(plot + ' .turbo-sse-guide')
+            for action in ('Pan', 'Zoom range', 'Measure', 'Markers', 'Clear', 'Jump'):
+                expect(guide).to_contain_text(action)
+            self.assertTrue(guide.evaluate('e => e.scrollWidth <= e.clientWidth'), plot)
+        # Paging through plots is a key of the enlarged view only.
+        expect(self.page.locator('#w .turbo-sse-guide [data-big]')).to_be_hidden()
+
+    def test_jump_menu_finds_plots_and_series_and_jumps_to_them(self):
+        self.open('<div style="height:900px"></div>'
+                  '<div id="t" data-sse-graph data-sse-title="Thermal response"><span data-sse-event="t" data-sse-label="Inlet temperature" data-sse-unit="°C"></span>'
+                  '<span data-sse-event="u" data-sse-label="Outlet temperature" data-sse-unit="°C"></span></div><div style="height:900px"></div>'
+                  '<div id="s" data-sse-graph data-sse-event="s" data-sse-label="Supply voltage" data-sse-unit="mV"></div>'
+                  '<div style="height:1500px"></div><input id="field">')
+        for i in range(4):
+            self.case.emit('t', str(20 + i)); self.case.emit('u', str(10 + i)); self.case.emit('s', str(12000 + i))
+        self.received(12)
+        menu, query, jump = self.page.locator('.turbo-sse-menu'), self.page.locator('.turbo-sse-menu input'), self.page.locator('.turbo-sse-jump')
+        rows, names = self.page.locator('.turbo-sse-menu li'), self.page.locator('.turbo-sse-menu li > b:first-child')
+        expect(jump).to_be_visible()
+        # Typing in a field of the page never opens the menu.
+        self.page.locator('#field').focus(); self.page.keyboard.press('j')
+        expect(menu).to_be_hidden()
+        self.assertEqual(self.page.locator('#field').input_value(), 'j')
+        # J lists every plot with its series, in page order, on one page of six rows.
+        self.page.evaluate('document.activeElement.blur()'); self.page.keyboard.press('j')
+        expect(menu).to_be_visible(); expect(query).to_be_focused(); expect(jump).to_have_attribute('aria-expanded', 'true')
+        expect(names).to_have_text(['Thermal response', 'Inlet temperature', 'Outlet temperature', 'Supply voltage', 'Supply voltage'])
+        expect(self.page.locator('.turbo-sse-menu output')).to_have_text('‹1/1›')
+        # Initials find a plot and its series; a series row shows its plot and its current value with the unit.
+        query.fill('sv')
+        expect(names).to_have_text(['Supply voltage', 'Supply voltage'])
+        expect(rows.nth(1)).to_contain_text('12003 mV')
+        expect(rows.nth(0)).to_have_attribute('aria-selected', 'true')
+        self.page.keyboard.press('ArrowDown')
+        expect(rows.nth(1)).to_have_attribute('aria-selected', 'true')
+        self.page.keyboard.press('Enter')
+        # The plot's title bar lands just below the topbar; the plot is active with focus, and the series' tile is selected.
+        expect(menu).to_be_hidden()
+        expect(self.page.locator('#s .turbo-sse-plot')).to_have_attribute('data-active', '')
+        self.assertTrue(self.page.evaluate('document.activeElement === document.querySelector("#s canvas")'))
+        gap = self.page.evaluate('document.querySelector("#s .turbo-sse-plot").getBoundingClientRect().top - document.querySelector(".turbo-sse-bar").getBoundingClientRect().bottom')
+        self.assertAlmostEqual(gap, 8, delta=1)
+        tile = self.page.locator('#s .turbo-sse-legend > *').first
+        expect(tile).to_have_attribute('data-selected', '')
+        # Its keys work at once, and Esc ends the selection.
+        self.page.keyboard.press('l'); expect(self.page.locator('#s [data-action=Live]')).not_to_be_checked()
+        self.page.keyboard.press('Escape'); expect(tile).not_to_have_attribute('data-selected', '')
+        # Word starts rank before matches inside words, and the matched letters are underlined.
+        self.page.keyboard.press('/'); query.fill('temp')
+        expect(names).to_have_text(['Inlet temperature', 'Outlet temperature'])
+        expect(rows.first.locator('mark')).to_have_text('temp')
+        # Typing never reaches the plots' shortcuts; a query without matches says so; Esc closes.
+        query.fill('l'); expect(self.page.locator('#s [data-action=Live]')).not_to_be_checked()
+        query.fill('xyz'); expect(rows).to_have_text(['No plot or series matches “xyz”'])
+        self.page.keyboard.press('Escape'); expect(menu).to_be_hidden()
+        # A click on a row jumps too.
+        jump.click(); query.fill('thermal'); rows.first.click()
+        expect(self.page.locator('#t .turbo-sse-plot')).to_have_attribute('data-active', '')
+        # In the enlarged view, a jump switches the enlarged plot.
+        self.page.keyboard.press('e'); expect(self.page.locator('#t .turbo-sse-plot')).to_have_attribute('data-max', '')
+        self.page.keyboard.press('j'); query.fill('supply'); self.page.keyboard.press('Enter')
+        expect(self.page.locator('#s .turbo-sse-plot')).to_have_attribute('data-max', '')
+        expect(self.page.locator('#t .turbo-sse-plot')).not_to_have_attribute('data-max', '')
+        # A press outside the topbar closes the menu.
+        self.page.keyboard.press('j'); expect(menu).to_be_visible()
+        self.page.mouse.click(5, 600); expect(menu).to_be_hidden()
+
+    def test_crosshair_carries_axis_chips_and_rings(self):
+        self.open('<div id="a" data-sse-graph><span data-sse-event="v"></span><span data-sse-event="w"></span></div>')
+        for i in range(8):
+            self.case.emit('v', str(i)); self.case.emit('w', str(10 - i)); self.page.wait_for_timeout(15)
+        self.received(16)
+        box = self.page.locator('#a canvas').bounding_box()
+        self.page.mouse.move(box['x'] + box['width'] / 2, box['y'] + box['height'] / 2); self.frames()
+        # The time sits in a chip on the time axis and the value in a chip on the value axis, matching the readout.
+        cursor, cross = self.page.locator('#a .turbo-sse-cursor'), self.page.locator('#a .turbo-sse-cross-y')
+        readout = self.page.locator('#a .turbo-sse-readout').inner_text()
+        self.assertIn('Elapsed ' + cursor.get_attribute('data-t'), readout)
+        self.assertIn('y ' + cross.get_attribute('data-v'), readout)
+        # Each curve has a ring at its nearest sample, on the crosshair's time; hiding a series hides its ring.
+        rings = self.page.locator('#a .turbo-sse-ring')
+        expect(rings).to_have_count(2)
+        expect(rings.first).to_be_visible(); expect(rings.last).to_be_visible()
+        self.page.locator('#a .turbo-sse-legend > *').first.click()
+        self.page.mouse.move(box['x'] + box['width'] / 2 + 5, box['y'] + box['height'] / 2); self.frames()
+        expect(rings.first).to_be_hidden(); expect(rings.last).to_be_visible()
+
+    def test_key_glyphs_are_centered_by_their_ink(self):
+        self.open('<div id="a" data-sse-graph data-sse-event="v"></div><div id="b" data-sse-graph data-sse-event="w"></div>')
+        self.case.emit('v', '1'); self.case.emit('w', '1'); self.received(2)
+        # Collect every key the interface shows: the controls, the guide (enlarged, so it pages too) and the jump menu.
+        box = self.page.locator('#a canvas').bounding_box()
+        self.page.mouse.click(box['x'] + 200, box['y'] + 100)
+        self.page.locator('#a .turbo-sse-plot > header').click()
+        self.page.keyboard.press('j')
+        keys = self.page.evaluate('[...new Set([...document.querySelectorAll("kbd")].filter(k => k.getClientRects().length).map(k => JSON.stringify([k.textContent, k.className])))].map(JSON.parse)')
+        self.assertGreaterEqual(len(keys), 20)
+        # A key's centering depends on its own style only, so each is drawn alone at a whole pixel on white and
+        # measured from its pixels, at four device pixels per CSS pixel: the box of everything darker than mid-gray,
+        # inside the rounded corners, against the key's box.
+        page = self.browser.new_page(device_scale_factor=4)
+        try:
+            page.set_content('<link rel="stylesheet" href="{}/dist/turbo-sse.css"><body style="background:#fff">'.format(self.server.url) +
+                             ''.join('<kbd class="{}" style="position:absolute;left:20px;top:{}px">{}</kbd>'.format(c, 20 + 30 * i, t) for i, (t, c) in enumerate(keys)))
+            page.wait_for_function('getComputedStyle(document.querySelector("kbd")).height === "14px"')
+            scan = '''async png => { const img = new Image(); img.src = "data:image/png;base64," + png; await img.decode();
+                const c = document.createElement("canvas"), w = c.width = img.width, h = c.height = img.height, x = c.getContext("2d"); x.drawImage(img, 0, 0);
+                const d = x.getImageData(0, 0, w, h).data; let t = h, b = 0, l = w, r = 0;
+                for (let y = 8; y < h - 8; y++) for (let i = 8; i < w - 8; i++) { const k = (y * w + i) * 4;
+                    if (d[k] + d[k + 1] + d[k + 2] < 330) { t = Math.min(t, y); b = Math.max(b, y + 1); l = Math.min(l, i); r = Math.max(r, i + 1); } }
+                return [(l + r - w) / 8, (t + b - h) / 8]; }'''
+            for (text, _), key in zip(keys, page.locator('kbd').all()):
+                dx, dy = page.evaluate(scan, base64.b64encode(key.screenshot()).decode())
+                self.assertLessEqual(abs(dx), .5, (text, dx, dy))
+                self.assertLessEqual(abs(dy), .5, (text, dx, dy))
+        finally:
+            page.close()
 
     def test_enlarged_plot_fills_the_window_and_follows_history(self):
         self.open('<p>Before</p><div id="a" data-sse-graph data-sse-event="v"></div><div id="b" data-sse-graph data-sse-event="w" data-sse-unit="rpm"></div>'
@@ -441,7 +549,7 @@ class GraphCases:
         self.page.evaluate('scrollTo(0, 150)')
         small = self.page.evaluate(box, '#b')
         # The header is a title bar: the title on the left, the unit at its right edge, and nothing else.
-        self.assertEqual(header.evaluate('e => [e.children.length, Math.round(e.getBoundingClientRect().right - e.lastChild.getBoundingClientRect().right)]'), [2, 6])
+        self.assertEqual(header.evaluate('e => [[...e.children].filter(c => c.getClientRects().length).length, Math.round(e.getBoundingClientRect().right - e.lastChild.getBoundingClientRect().right)]'), [2, 10])
         # Pressing the header first only activates the plot, like the plot area; pressing the active header enlarges it.
         expect(button).to_be_hidden()
         header.click()
@@ -473,6 +581,18 @@ class GraphCases:
         self.assertEqual(self.page.evaluate(box, '#b'), small)
         self.page.evaluate('history.forward()')
         expect(plot).to_have_attribute('data-max', '')
+        # The title bar pages through the plots, ‹ 2/3 ›, and the guide has a square for each. ] and [ step to the
+        # neighbours within the same history entry, so Back still returns to the page.
+        expect(self.page.locator('#b .turbo-sse-plot nav output')).to_have_text('2/3')
+        expect(self.page.locator('#b .turbo-sse-guide [data-big] i i')).to_have_count(3)
+        length = self.page.evaluate('history.length')
+        self.page.keyboard.press(']')
+        expect(self.page.locator('#l .turbo-sse-plot')).to_have_attribute('data-max', '')
+        expect(plot).not_to_have_attribute('data-max', '')
+        self.assertEqual(self.page.evaluate('[history.state.turboSSE, history.length]'), [3, length])
+        self.page.locator('#l .turbo-sse-plot nav button').first.click()
+        expect(plot).to_have_attribute('data-max', '')
+        expect(self.page.locator('#l .turbo-sse-plot')).not_to_have_attribute('data-max', '')
         # Esc first clears the markers and then leaves the enlarged view; E enlarges and returns.
         self.page.keyboard.press('a'); self.page.keyboard.press('Escape')
         expect(self.page.locator('#b .turbo-sse-selection')).to_be_hidden()
@@ -496,7 +616,7 @@ class GraphCases:
         expect(self.page.locator('#l .turbo-sse-plot')).to_have_attribute('data-max', '')
         self.frames()
         lanes = self.page.evaluate(box, '#l')
-        self.assertEqual((lanes['canvas'], lanes['bottom']), (80, 0), lanes)
+        self.assertEqual((lanes['canvas'], lanes['bottom']), (86, 0), lanes)
         # Destroying the runtime while a plot is enlarged leaves the page as it was.
         self.page.evaluate('TurboSSE.destroy()')
         self.assertEqual(self.page.evaluate('[document.querySelector("#l").style.minHeight, getComputedStyle(document.documentElement).overflowY]'), ['', 'visible'])
@@ -529,8 +649,9 @@ class GraphCases:
             self.case.emit('v', str(i)); self.case.emit('w', str(i)); self.case.emit('x', str(i)); self.page.wait_for_timeout(10)
         self.received(36)
         layout = '[...document.querySelectorAll("#b, #after, #a .turbo-sse-measure tr")].map(e => Math.round(e.getBoundingClientRect().top))'
-        # Idle: the A/B line prompts for a measurement, and each series already has its table row.
-        expect(self.page.locator('#a .turbo-sse-measure p')).to_contain_text('Shift-drag')
+        # Idle: the guide shows the keys in the measurement's space, and each series already has its table row.
+        expect(self.page.locator('#a .turbo-sse-guide')).to_contain_text('Measure')
+        expect(self.page.locator('#a .turbo-sse-measure p')).to_be_hidden()
         self.assertEqual(self.page.locator('#a .turbo-sse-measure tbody tr').count(), 2)
         before = self.page.evaluate(layout)
         box = self.page.locator('#a canvas').bounding_box()
@@ -538,8 +659,19 @@ class GraphCases:
         self.page.keyboard.down('Shift'); self.page.mouse.move(box['x'] + 150, box['y'] + 100); self.page.mouse.down()
         self.page.mouse.move(box['x'] + 500, box['y'] + 100, steps=5); self.page.mouse.up(); self.page.keyboard.up('Shift')
         expect(self.page.locator('#b .turbo-sse-measure')).to_contain_text('RMS')
+        expect(self.page.locator('#a .turbo-sse-guide')).to_be_hidden()
         self.frames()
         self.assertEqual(self.page.evaluate(layout), before)
+        # Inspecting and hiding a series do not move it either.
+        self.page.mouse.move(box['x'] + 260, box['y'] + 90); self.frames()
+        self.page.locator('#a .turbo-sse-legend > *').first.click(); self.frames()
+        self.assertEqual(self.page.evaluate(layout), before)
+        # Keys in the band share one height and top edge, and tiles in a row share their height.
+        keys = self.page.locator('#a .turbo-sse-tools :is(button, label)').evaluate_all('e => e.map(k => [Math.round(k.getBoundingClientRect().top * 4), k.getBoundingClientRect().height])')
+        self.assertEqual(len(set(map(tuple, keys))), 1, keys)
+        self.assertEqual(keys[0][1], 22)
+        tiles = self.page.locator('#a .turbo-sse-legend > *').evaluate_all('e => e.map(k => k.getBoundingClientRect().height)')
+        self.assertEqual(len(set(tiles)), 1, tiles)
 
     def test_marker_labels_text_selection_and_shortcuts_after_clicks(self):
         self.open('<div id="a" data-sse-graph data-sse-event="v" data-sse-label="Volts" data-sse-unit="V"></div>')
@@ -559,18 +691,18 @@ class GraphCases:
         expect(measure).to_contain_text('RMS')
         self.page.evaluate('labels = []'); self.case.emit('v', '5'); self.received(13); self.frames()
         self.assertTrue({'A', 'B'} <= set(self.page.evaluate('labels')), self.page.evaluate('labels'))
-        a, b = map(float, re.match(r'A ([-\d.e+]+) s · B ([-\d.e+]+) s', measure.locator('p').first.inner_text()).groups())
+        a, b = map(float, re.match(r'A ([-\d.e+]+) s B ([-\d.e+]+) s', measure.locator('p').first.text_content()).groups())
         self.assertGreater(a, b)
-        # Measurement, readout and legend text can be selected, and the selection survives redraws.
-        # Drags start inside the text: Firefox does not start a selection on the legend's color swatch.
-        for target in (measure.locator('p').first, self.page.locator('#a .turbo-sse-readout'), legend.first):
+        # Measurement, readout and series names can be selected, and the selection survives redraws.
+        # Drags end inside the text: Firefox does not extend a selection onto the series badge.
+        for target in (measure.locator('p').first, self.page.locator('#a .turbo-sse-readout'), legend.first.locator('.turbo-sse-series-name')):
             r = target.bounding_box()
-            self.page.mouse.move(r['x'] + 16, r['y'] + r['height'] / 2); self.page.mouse.down()
-            self.page.mouse.move(r['x'] + min(r['width'] - 2, 200), r['y'] + r['height'] / 2, steps=6); self.page.mouse.up()
+            self.page.mouse.move(r['x'] + min(r['width'] - 2, 200), r['y'] + r['height'] / 2); self.page.mouse.down()
+            self.page.mouse.move(r['x'] + 24, r['y'] + r['height'] / 2, steps=6); self.page.mouse.up()
             self.case.emit('v', '6'); self.frames()
             selected = self.page.evaluate('getSelection().toString()')
             self.assertGreater(len(selected.strip()), 3, target)
-            self.assertIn(selected.strip(), target.inner_text())
+            self.assertIn(' '.join(selected.split()).lower(), ' '.join(target.text_content().split()).lower())
         expect(legend.first).to_have_attribute('aria-pressed', 'true')
         # Clicks outside the canvas keep the plot active, and its shortcuts keep working.
         for target in (self.page.locator('#a .turbo-sse-readout'), measure.locator('p').first):
@@ -649,7 +781,7 @@ class GraphCases:
     def pointer_y(self):
         self.frames()
         text = self.page.locator('#a .turbo-sse-readout').inner_text()
-        return float(re.search(r'· y ([-\d.e+]+)', text).group(1)), text
+        return float(re.search(r'\by ([-\d.e+]+)', text).group(1)), text
 
     def test_markers_stop_live_and_fit_resets_y_zoom(self):
         self.open('<div id="a" data-sse-graph data-sse-event="v"></div>')
@@ -683,7 +815,7 @@ class GraphCases:
         self.page.keyboard.up('Shift'); self.frames()
         self.page.mouse.move(*spot); zoomed, text = self.pointer_y()
         self.assertNotAlmostEqual(zoomed, fitted, delta=abs(fitted) * .01 + 1e-9, msg=text)
-        self.assertEqual(self.page.locator('#a .turbo-sse-tools button').all_inner_texts(), ['FitF', 'Back', 'Export view', 'EnlargeE'])
+        self.assertEqual(self.page.locator('#a .turbo-sse-tools button').all_text_contents(), ['FitF', 'Back', 'Export view', 'EnlargeE'])
 
     def test_restart_rows_and_unsynchronized_times(self):
         self.open('<div data-sse-graph data-sse-event="v"></div>')

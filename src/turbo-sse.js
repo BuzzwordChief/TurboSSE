@@ -285,18 +285,23 @@
   // Series colors for thin lines on black; every pair stays distinct with red-green color blindness.
   // Red and orange are left to restart markers and the selection.
   const palette = ["#fcd936", "#46d8fc", "#f85fbd", "#55cd7a", "#749ff9", "#995df7"];
-  const SMALL = "bold 10px DIN Alternate, Bahnschrift, sans-serif", LARGE = SMALL.replace(10, 11);
+  const tint = c => palette[(c.id - 1) % palette.length];
+  // The canvas uses the interface's condensed face. WebKit's canvas ignores the condensed width, so the macOS
+  // face is also named directly.
+  const SMALL = 'bold condensed 10px "HelveticaNeue-CondensedBold", "Helvetica Neue", Bahnschrift, "Roboto Condensed", "Arial Narrow", sans-serif', LARGE = SMALL.replace(10, 11);
   const format = value => {
     if (!Number.isFinite(value)) return "—";
     const magnitude = Math.abs(value);
     return magnitude && (magnitude >= 1e6 || magnitude < .001) ? value.toExponential(4).replace(/\.?0+e/, "e") : String(Number(value.toPrecision(5)));
   };
   const put = (node, text) => { if (node.textContent !== text) node.textContent = text; };
-  // Discrete lanes. A well-mixed hash of a value's text picks two of 24 colors: eight hue families, each in three
-  // dark tints that keep white text readable, outlined in a bright tone of the hue. No family is red or orange.
+  const pair = (label, value) => ` <span>${label} <b>${value}</b></span>`;
+  // Discrete lanes. A well-mixed hash of a value's text picks two of 24 colors: eight hue families of equal
+  // perceived lightness, each in three dark tints that keep white text readable, outlined in a bright tone of the
+  // hue. No family is red or orange.
   // The second color always has another hue.
   // A value takes its first color unless another value in the same lane already has that hue or that color.
-  const LANE = 20, HUES = [55, 95, 135, 170, 205, 245, 285, 325];
+  const LANE = 20, HUES = [100, 125, 150, 180, 215, 255, 295, 330];
   const choices = text => {
     let h = 2166136261;
     for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
@@ -304,12 +309,13 @@
     const first = h % 24;
     return [first, (h >>> 16) % 3 * 8 + (first % 8 + 1 + (h >>> 20) % 7) % 8];
   };
-  const shade = (slot, fill) => `hsl(${HUES[slot % 8]},${fill ? "70%," + [12, 20, 28][slot >> 3] : "90%,70"}%)`;
+  const shade = (slot, fill) => `oklch(${fill ? [.3, .37, .44][slot >> 3] + " .08" : ".8 .14"} ${HUES[slot % 8]})`;
   // Shorten text with an ellipsis to fit a width in pixels; empty when nothing fits.
   const clip = (ctx, text, room) => {
     const width = ctx.measureText(text).width, keep = Math.floor(text.length * room / width) - 1;
     return width <= room ? text : keep > 0 ? text.slice(0, keep) + "…" : "";
   };
+  const typing = event => event.target.closest && event.target.closest("input:not([type=checkbox]), textarea, select, [contenteditable]");
   function make(tag, className, text, parent) {
     const node = document.createElement(tag);
     node.className = className;
@@ -338,37 +344,37 @@
       this.host = host; this.sources = sources; this.view = view; this.hooks = hooks;
       this.min = option(host, "y-min", null); this.max = option(host, "y-max", null);
       if (this.min !== null && this.max !== null && this.min >= this.max) throw new Error("Graph y-min must be below y-max");
-      this.hidden = new Set(); this.top = 24; this.left = 64; this.width = this.height = this.span = 1; this.pointer = null;
+      this.hidden = new Set(); this.top = 24; this.left = 64; this.width = this.height = this.span = 1; this.pointer = null; this.chip = "";
       this.lanes = sources.filter(c => c.lane); this.series = sources.filter(c => !c.lane);
       this.abort = new AbortController();
       const listen = (node, name, fn, opts = {}) => node.addEventListener(name, fn, {...opts, signal: this.abort.signal});
-      const title = attr(host, "title") || attr(host, "label") || sources.map(c => c.label).join(", ");
+      const title = this.title = attr(host, "title") || attr(host, "label") || sources.map(c => c.label).join(", ");
       this.element = make("section", "turbo-sse-plot", undefined, host);
       this.element.setAttribute("aria-label", title);
       const header = make("header", "", undefined, this.element);
       make("strong", "", title, header);
-      make("span", "", [...new Set(sources.map(c => c.unit).filter(Boolean))].join(", "), header);
+      // An enlarged plot pages through the plots from its title bar, as a menu page does: ‹ 2/4 ›.
+      this.pager = make("nav", "", undefined, header); this.pager.setAttribute("aria-label", "Plots");
+      [-1, 1].forEach(step => {
+        const b = make("button", "", step < 0 ? "‹" : "›", this.pager); b.type = "button"; b.setAttribute("aria-label", step < 0 ? "Previous plot" : "Next plot");
+        listen(b, "click", event => { event.stopPropagation(); hooks.page(step); });
+        if (step < 0) this.page = make("output", "", undefined, this.pager);
+      });
+      make("span", "", this.units = [...new Set(sources.map(c => c.unit).filter(Boolean))].join(", "), header);
       // Pressing the header of the active plot enlarges it, as entering a selected menu row; pressing it again
       // brings the plot back. Selecting the header's text does neither.
       listen(header, "pointerdown", () => { this.armed = this.active; });
       listen(header, "click", () => { if (this.armed && getSelection().isCollapsed) hooks.enlarge(this); });
-      // The one-row band above the data holds the key legend on the left and the plot controls on the right.
-      // A legend that does not fit is cut off and fades out; a hidden full copy appears while it is hovered.
+      // The band above the data holds the plot controls only: equal keys, each with its key glyph.
       this.tools = make("div", "turbo-sse-tools");
-      const keys = make("span", "", undefined, this.tools), hint = make("div", "turbo-sse-hint", undefined, keys);
-      for (const [keys, text] of [["Drag|←|→", "pan"], ["Wheel|+|−", "zoom"], ["Right-drag", "zoom range"], ["Shift|Drag", "measure"], ["A|B", "markers"], ["Esc", "clear"]]) {
-        const item = make("span", "", undefined, hint);
-        keys.split("|").forEach((key, i) => { if (i) item.append(keys[0] == "S" ? "+" : " "); make("kbd", /\w/.test(key) ? "" : "turbo-sse-sign", key, item); });
-        item.append(" " + text);
-      }
-      keys.append(hint.cloneNode(true)); keys.lastChild.setAttribute("aria-hidden", "true");
       this.controls = make("div", "", undefined, this.tools); this.controls.setAttribute("role", "toolbar");
       const live = make("label", "", undefined, this.controls);
-      this.liveBox = make("input", "", undefined, live); this.liveBox.type = "checkbox"; this.liveBox.dataset.action = "Live"; live.append("Live"); make("kbd", "", "L", live);
+      this.liveBox = make("input", "", undefined, live); this.liveBox.type = "checkbox"; this.liveBox.dataset.action = "Live"; make("span", "", "Live", live); make("kbd", "", "L", live);
       listen(this.liveBox, "change", () => this.live(this.liveBox.checked));
       // The last button enlarges the plot to fill the window; it then reads Reduce.
       for (const [action, key] of [["Fit", "F"], ["Back"], ["Export view"], ["Enlarge", "E"]]) {
-        const b = this.full = make("button", "", action, this.controls); b.type = "button"; b.dataset.action = action;
+        const b = this.full = make("button", "", undefined, this.controls); b.type = "button"; b.dataset.action = action;
+        make("span", "", action, b);
         if (key) make("kbd", "", key, b);
       }
       this.area = make("div", "turbo-sse-area", undefined, this.element);
@@ -376,45 +382,58 @@
       this.canvas = make("canvas", "", undefined, this.area);
       this.canvas.tabIndex = 0;
       this.canvas.setAttribute("role", "img");
-      this.canvas.setAttribute("aria-label", this.element.getAttribute("aria-label") + ". Click to interact. " + [...hint.children].map(e => e.textContent).join("; ") + "; L live; F fit; E enlarge.");
-      // The gutter fits the unit and the lane names. Lanes add rows below the numeric area, or make up the whole plot.
-      const pen = this.canvas.getContext("2d"); pen.font = SMALL;
+      this.canvas.setAttribute("aria-label", title + ". Click to interact. Drag or arrow keys pan; wheel, + and − zoom; right-drag zooms a range; Shift-drag measures; A and B place markers; Esc clears; L live; F fit; E enlarge; J jump to a plot.");
+      // The gutter fits the unit, the lane names and, once drawn, the y labels. Lanes add rows below the numeric
+      // area, or make up the whole plot.
+      const pen = this.pen = this.canvas.getContext("2d"); pen.font = SMALL;
       this.unit = this.series.length ? this.series[0].unit : "";
       this.need = Math.ceil(Math.max(18, pen.measureText(this.unit).width + 8, ...this.lanes.map(c => Math.min(120, pen.measureText(c.label).width) + 10)));
-      if (this.lanes.length) this.area.style.height = this.series.length ? `calc(var(--turbo-sse-height, 220px) + ${this.lanes.length * LANE}px)` : (this.area.style.flex = "none", 60 + this.lanes.length * LANE + "px");
+      if (this.lanes.length) this.area.style.height = this.series.length ? `calc(var(--turbo-sse-height, 220px) + ${this.lanes.length * LANE}px)` : (this.area.style.flex = "none", 66 + this.lanes.length * LANE + "px");
+      // The crosshair carries its time and value as chips on the axes, and a ring marks each curve's nearest sample.
       this.cursor = make("div", "turbo-sse-cursor", undefined, this.area);
       this.horizontal = make("div", "turbo-sse-cross-y", undefined, this.area);
       this.selection = make("div", "turbo-sse-selection", undefined, this.area);
+      this.rings = this.series.map(c => { const r = make("i", "turbo-sse-ring", undefined, this.area); r.style.setProperty("--series-color", tint(c)); return r; });
       this.cursor.hidden = this.horizontal.hidden = this.selection.hidden = true;
+      // Series tiles, as in a camera's function menu: a numbered badge and the name over the value, between thin
+      // rules. The number is the series' export file number (s01, s02, …).
       this.legend = make("div", "turbo-sse-legend", undefined, this.element);
-      this.values = sources.map(c => {
+      this.tiles = sources.map(c => {
         // A focusable span rather than a <button>, so its name and value can be selected and copied in every browser.
         const b = make("span", "", undefined, this.legend); b.tabIndex = 0; b.setAttribute("role", "button");
-        b.style.setProperty("--series-color", palette[(c.id - 1) % palette.length]);
+        b.style.setProperty("--series-color", tint(c));
         b.setAttribute("aria-pressed", "true");
+        if (c.lane) b.dataset.lane = "";
         listen(b, "keydown", event => { if (event.key == "Enter" || event.key == " ") { event.preventDefault(); b.click(); } });
-        make("span", "turbo-sse-series-name", c.label, b); b.append(" ");
-        const value = make("span", "turbo-sse-series-value", "—", b);
+        make("span", "turbo-sse-series-name", c.label, b).dataset.n = c.id; b.append(" ");
+        b.value = make("b", "turbo-sse-series-value", "—", b);
+        if (c.unit && !c.lane) b.unit = make("small", "", "", b.value);
         listen(b, "click", event => {
           if (!getSelection().isCollapsed) return;  // Selecting text does not toggle the series.
           if (event.shiftKey) { this.hidden = new Set(sources.filter(s => s !== c)); }
           else if (this.hidden.has(c)) this.hidden.delete(c); else this.hidden.add(c);
-          this.values.forEach((v, i) => v.parentElement.setAttribute("aria-pressed", String(!this.hidden.has(sources[i]))));
+          this.tiles.forEach((t, i) => t.setAttribute("aria-pressed", String(!this.hidden.has(sources[i]))));
           hooks.invalidate();
         });
-        return value;
+        return b;
       });
       this.readout = make("div", "turbo-sse-readout", "Waiting for data", this.element);
+      // The guide and the measurement share one grid cell, so the panel keeps its height and measuring never moves
+      // the page. The guide pairs each key glyph with what it does; touch screens list gestures instead.
       this.measure = make("div", "turbo-sse-measure", undefined, this.element);
+      this.guide = make("div", "turbo-sse-guide", undefined, this.measure);
+      this.guide.innerHTML = '<span><kbd>Drag</kbd> Pan</span><span><kbd class="turbo-sse-sign">←</kbd><kbd class="turbo-sse-sign">→</kbd> Pan</span><span><kbd>Wheel</kbd> Zoom</span><span><kbd class="turbo-sse-sign">+</kbd><kbd class="turbo-sse-sign">−</kbd> Zoom</span><span><kbd>Right-drag</kbd> Zoom range</span><span><kbd>Shift</kbd>+<kbd>Drag</kbd> Measure</span><span><kbd>A</kbd><kbd>B</kbd> Markers</span><span><kbd>Esc</kbd> Clear</span><span><kbd>J</kbd> Jump</span><span data-big><kbd class="turbo-sse-sign">[</kbd><kbd class="turbo-sse-sign">]</kbd> Plots <i></i></span><span data-touch><b>Drag</b> Pan</span><span data-touch><b>Tap</b> Place A</span><span data-touch><b>Tap again</b> Place B</span>';
+      this.squares = this.guide.querySelector("i");
+      this.result = make("div", "", undefined, this.measure);
       listen(this.controls, "click", event => {
-        const action = event.target.dataset.action;
+        const target = event.target.closest("[data-action]"), action = target && target.dataset.action;
         if (action == "Fit") { this.save(); this.y = null; const r = hooks.extent(view); if (view.live) view.window = Infinity; else { view.lo = r[0]; view.hi = Math.max(r[1], r[0] + .001); } }
         if (action == "Back" && view.history.length) Object.assign(view, view.history.pop());
         if (action == "Enlarge") hooks.enlarge(this);
         if (action == "Export view") hooks.export(sources, view.a !== null && view.b !== null ? [Math.min(view.a, view.b), Math.max(view.a, view.b)] : [view.lo, view.hi]);
         // After a pointer click, return focus to the canvas so its shortcuts keep working.
         // Keyboard activation shows a focus ring on the control; focus then stays for tabbing.
-        if (!event.target.matches(":focus-visible")) this.canvas.focus();
+        if (!(target || event.target).matches(":focus-visible")) this.canvas.focus();
         hooks.invalidate();
       });
       listen(this.canvas, "contextmenu", event => event.preventDefault());
@@ -464,24 +483,29 @@
       listen(this.canvas, "pointercancel", () => { this.cancel(); });
       listen(this.canvas, "pointerleave", () => { if (!this.drag) { view.cursor = this.cursorY = this.lane = this.pointer = null; hooks.cursor(view); } });
       listen(document, "keydown", event => {
-        if (!this.active || event.ctrlKey || event.metaKey || event.altKey) return;
-        const key = event.key.toLowerCase(), span = view.hi - view.lo, center = view.cursor === null ? (view.lo + view.hi) / 2 : view.cursor;
-        if (["arrowleft", "arrowright", "+", "=", "-", "a", "b", "l", "f", "e", "escape"].includes(key)) event.preventDefault();
+        if (!this.active || event.ctrlKey || event.metaKey || event.altKey || typing(event)) return;
+        const key = event.key.toLowerCase(), span = view.hi - view.lo, center = view.cursor === null ? (view.lo + view.hi) / 2 : view.cursor, big = this.element.hasAttribute("data-max");
+        if (["arrowleft", "arrowright", "+", "=", "-", "a", "b", "l", "f", "e", "escape"].includes(key) || big && (key === "[" || key === "]")) event.preventDefault();
+        // The next plot becomes the active one, so it must not see this key too.
+        if (big && (key === "[" || key === "]")) { event.stopImmediatePropagation(); hooks.page(key === "]" ? 1 : -1); }
         if (key === "arrowleft" || key === "arrowright") this.setRange(view.lo + span * (key === "arrowleft" ? -.1 : .1), view.hi + span * (key === "arrowleft" ? -.1 : .1));
         if (["+", "=", "-"].includes(key)) this.zoom(center, key === "-" ? 1.25 : .8);
         if (key === "a" || key === "b") { if (view.live) this.live(false); view[key] = this.snap(center); }
         // Esc clears the markers or cancels a drag; with nothing to clear, it leaves the enlarged view.
-        if (key === "e" || key === "escape" && !this.drag && view.a === null && view.b === null && this.element.hasAttribute("data-max")) hooks.enlarge(this);
-        if (key === "escape") { this.cancel(); view.a = view.b = null; }
+        if (key === "e" || key === "escape" && !this.drag && view.a === null && view.b === null && big) hooks.enlarge(this);
+        if (key === "escape") { this.cancel(); this.choose(); view.a = view.b = null; }
         if (key === "l") this.live(!view.live);
         if (key === "f") this.controls.querySelector("[data-action=Fit]").click();
         hooks.invalidate();
       });
       // A press or focus inside the plot activates it; anywhere else deactivates it, unless the plot is enlarged.
       for (const type of ["pointerdown", "focusin"]) listen(document, type, event => this.activate(this.element.contains(event.target) || this.element.hasAttribute("data-max")));
+      listen(document, "pointerdown", () => this.choose());
+      // A plot of lanes only is as tall as its band, the marker strip, its lanes and the time axis.
       this.observer = new ResizeObserver(() => {
-        keys.toggleAttribute("data-more", keys.scrollWidth > keys.clientWidth);
-        this.top = Math.max(16, this.tools.offsetHeight + 6); hooks.invalidate();
+        this.top = Math.max(16, this.tools.offsetHeight + 10);
+        if (!this.series.length) this.area.style.height = this.top + 34 + this.lanes.length * LANE + "px";
+        hooks.invalidate();
       });
       this.observer.observe(this.area); this.observer.observe(this.tools);
     }
@@ -490,6 +514,7 @@
       this.element.toggleAttribute("data-active", this.active = on);
       return was;
     }
+    choose(c) { this.tiles.forEach((t, i) => t.toggleAttribute("data-selected", this.sources[i] === c)); }
     save() { const g = this.view, h = g.history; h.push({lo: g.lo, hi: g.hi, live: g.live, window: g.window}); if (h.length > 20) h.shift(); }
     cancel() {
       if (this.drag) {
@@ -546,27 +571,43 @@
       this.selection.style.cssText = `left:${x}px;top:${this.top}px;width:${Math.max(0,end-x)}px;height:${this.span}px`;
     }
     inspect() {
-      const g = this.view, t = g.cursor;
-      this.cursor.hidden = t === null || t < g.lo || t > g.hi;
-      if (!this.cursor.hidden) this.cursor.style.cssText = `left:${this.x(t)}px;top:${this.top}px;height:${this.span}px`;
-      this.horizontal.hidden = this.cursor.hidden || this.cursorY == null;
-      if (!this.horizontal.hidden) this.horizontal.style.cssText = `left:${this.left}px;top:${this.cursorY}px;width:${this.width}px`;
+      const g = this.view, t = g.cursor, off = t === null || t < g.lo || t > g.hi;
+      this.cursor.hidden = off;
+      if (!off) {
+        // The time chip stays inside the plot area at its edges.
+        const x = this.x(t), label = format(t) + " s"; this.pen.font = SMALL;
+        const half = this.pen.measureText(label).width / 2 + 5;
+        this.cursor.style.cssText = `left:${x}px;top:${this.top}px;height:${this.span}px;--shift:${Math.min(Math.max(x, half + 2), this.left + this.width + 14 - half) - x}px`;
+        this.cursor.dataset.t = label;
+      }
+      this.horizontal.hidden = off || this.cursorY == null;
+      if (!this.horizontal.hidden) { this.horizontal.style.cssText = `left:${this.left}px;top:${this.cursorY}px;width:${this.width}px`; this.horizontal.dataset.v = format(this.value(this.cursorY)); }
+      this.series.forEach((c, i) => {
+        const p = !off && this.place && !this.hidden.has(c) && c.history.nearest(t), ring = this.rings[i], y = p && !p.summary && p.a[5] && this.place(p.a[8]);
+        ring.hidden = !(y >= this.top && y <= this.top + this.height && p.a[0] >= g.lo && p.a[0] <= g.hi);
+        if (!ring.hidden) { ring.style.left = this.x(p.a[0]) + "px"; ring.style.top = y + "px"; }
+      });
       this.sources.forEach((c, i) => {
-        const point = c.history.nearest(t === null ? g.hi : t, t === null || !!c.lane), a = point && point.a;
+        const point = c.history.nearest(t === null ? g.hi : t, t === null || !!c.lane), a = point && point.a, tile = this.tiles[i];
         if (c.lane) {
-          const text = !a ? "—" : point.summary ? "…" : a[8] >= 0 ? c.values[a[8]] : "—", style = this.values[i].parentElement.style;
-          const color = c.lane == "bus" && a && !point.summary && a[8] >= 0 ? shade(c.slots[a[8]]) : style.getPropertyValue("--series-color");
-          put(this.values[i], text);
-          if (style.getPropertyValue("--series-color") !== color) style.setProperty("--series-color", color);
+          const color = c.lane == "bus" && a && !point.summary && a[8] >= 0 ? shade(c.slots[a[8]]) : "";
+          put(tile.value, !a ? "—" : point.summary ? "…" : a[8] >= 0 ? c.values[a[8]] : "—");
+          if (tile.style.getPropertyValue("--value-color") !== color) tile.style.setProperty("--value-color", color);
           return;
         }
-        put(this.values[i], !a || !a[5] ? "—" : (point.summary ? `${format(a[6])}…${format(a[7])} (mean ${format(a[8])}, n=${a[5]})` : format(a[8])) + (c.unit ? " " + c.unit : ""));
+        const text = !a || !a[5] ? "—" : point.summary ? `${format(a[6])}…${format(a[7])} (mean ${format(a[8])}, n=${a[5]})` : format(a[8]);
+        put(tile.value.firstChild, text);
+        if (tile.unit) put(tile.unit, text === "—" ? "" : " " + c.unit);
+        tile.toggleAttribute("data-summary", !!(a && point.summary));
       });
+      // The information line: a LIVE or HOLD chip, then each value after its small label.
+      let html = this.baseReadout || "Waiting for data";
       if (t !== null) {
         const s = this.series[0] || this.sources[0], point = s.history.nearest(t, !!s.lane), a = point && point.a;
-        put(this.readout, "Elapsed " + format(t) + " s" + (this.cursorY == null ? "" : " · y " + format(this.value(this.cursorY))) + (!a ? "" : point.summary ? ` · summary ${format(a[0])}–${format(a[1])} s` :
-          ` · sample ${format(a[0])} s · uptime ${Number.isFinite(a[2]) ? "≈" + format(a[2]) + " s" : "— (unsynchronized)"}`));
-      } else put(this.readout, this.baseReadout || "Waiting for data");
+        html = this.chip + pair("Elapsed", format(t) + " s") + (this.cursorY == null ? "" : pair("y", format(this.value(this.cursorY)))) + (!a ? "" : point.summary ? pair("Summary", `${format(a[0])}–${format(a[1])} s`) :
+          pair("Sample", format(a[0]) + " s") + pair("Uptime", Number.isFinite(a[2]) ? "≈" + format(a[2]) + " s" : "— (unsynchronized)"));
+      }
+      if (this.html !== html) this.readout.innerHTML = this.html = html;
     }
     draw() {
       if (!this.host.isConnected || !this.area.clientWidth || !this.area.getClientRects().length) return;
@@ -590,26 +631,20 @@
       this.yMax = this.y ? this.y[1] : this.max === null ? Math.min(Number.MAX_VALUE, high + pad) : this.max;
       if (this.yMin >= this.yMax) { this.yMax = Math.min(Number.MAX_VALUE, this.yMin + pad); this.yMin = Math.max(-Number.MAX_VALUE, this.yMin - pad); }
       const scale = Math.max(Math.abs(this.yMin), Math.abs(this.yMax), Number.MIN_VALUE);
-      const y = v => T + (this.yMax / scale - v / scale) / (this.yMax / scale - this.yMin / scale) * this.height;
+      const y = this.place = v => T + (this.yMax / scale - v / scale) / (this.yMax / scale - this.yMin / scale) * this.height;
       const ink = getComputedStyle(this.area).color;
       ctx.font = SMALL; ctx.fillStyle = ctx.strokeStyle = ink; ctx.lineWidth = 1;
       const rule = (x0, y0, x1, y1, faint) => { ctx.globalAlpha = faint ? .3 : 1; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); ctx.globalAlpha = 1; };
       const L = this.left = Math.max(this.need, g.gutter || 0), end = w - 16;
       this.width = Math.max(1, w - L - 16);
       const band = L + 2 + "px"; if (this.tools.style.left !== band) this.tools.style.left = band;
-      ctx.textAlign = "center";
-      if (this.series.length) {
-        // Y tick labels read bottom to top, so the gutter needs only one line of text. Long labels get fewer ticks.
-        const labelled = count => ticks(this.yMin, this.yMax, count).map(v => [y(v), format(v)]);
-        let yTicks = labelled(5);
-        const longest = Math.max(0, ...yTicks.map(t => ctx.measureText(t[1]).width));
-        if (this.height / 5 < longest + 12) yTicks = labelled(Math.max(2, Math.floor(this.height / (longest + 12))));
-        for (const [at, label] of yTicks) {
-          const p = Math.round(at) + .5, half = ctx.measureText(label).width / 2;
-          rule(L, p, end, p, true); rule(L - 4, p, L, p);
-          ctx.save(); ctx.translate(L - 6, Math.min(Y - half, Math.max(T + half, p))); ctx.rotate(-Math.PI / 2); ctx.fillText(label, 0, 0); ctx.restore();
-        }
-      }
+      // Y labels read across, as on a camera's scales; the gutter grows to the longest one on the next frame.
+      ctx.textAlign = "right"; ctx.textBaseline = "middle";
+      const yTicks = this.series.length ? ticks(this.yMin, this.yMax, Math.max(2, Math.min(6, this.height / 30))).map(v => [Math.round(y(v)) + .5, format(v)]) : [];
+      // The gutter only grows, so changing labels never shift the plot sideways.
+      this.need = Math.max(this.need, ...yTicks.map(t => Math.ceil(ctx.measureText(t[1]).width / 4) * 4 + 12));
+      for (const [p, label] of yTicks) { rule(L, p, end, p, true); rule(L - 4, p, L, p); ctx.fillText(label, L - 6, Math.min(Y - 5, Math.max(T + 5, p))); }
+      ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
       const title = "Elapsed time (s)", room = end - ctx.measureText(title).width - 8;
       for (const v of ticks(g.lo, g.hi, Math.max(2, this.width / 90))) {
         const p = Math.round(this.x(v)) + .5, label = format(v); rule(p, T, p, B, true); rule(p, B, p, B + 4);
@@ -620,7 +655,7 @@
       ctx.save(); ctx.beginPath(); ctx.rect(L, T, this.width, this.height); ctx.clip();
       for (const c of this.series) {
         if (this.hidden.has(c)) continue;
-        const color = palette[(c.id - 1) % palette.length]; ctx.strokeStyle = ctx.fillStyle = color; ctx.lineWidth = 1.5; ctx.beginPath();
+        const color = tint(c); ctx.strokeStyle = ctx.fillStyle = color; ctx.lineWidth = 1.5; ctx.beginPath();
         let connected = false;
         c.history.query(g.lo, g.hi, Math.min(2048, this.width), (a, summary) => {
           if (!a[5]) { connected = false; return; }
@@ -645,7 +680,7 @@
       // Changes too close together to draw show as a gray block with their count.
       ctx.save(); ctx.lineWidth = 1; ctx.textBaseline = "middle";
       this.lanes.forEach((c, i) => {
-        const top = Y + i * LANE + 2, mid = top + 8, bottom = top + 16, color = palette[(c.id - 1) % palette.length];
+        const top = Y + i * LANE + 2, mid = top + 8, bottom = top + 16, color = tint(c);
         ctx.font = SMALL; ctx.textAlign = "right"; ctx.fillStyle = ctx.strokeStyle = ink;
         ctx.fillText(clip(ctx, c.label, L - 10), L - 6, mid); rule(L, top - 1.5, end, top - 1.5, true);
         if (this.hidden.has(c)) return;
@@ -690,27 +725,29 @@
       for (const marker of this.hooks.restarts()) if (marker.time >= g.lo && marker.time <= g.hi) {
         const x = this.x(marker.time); ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, B); ctx.stroke(); ctx.fillText("≈ restart", x + 4, T + 12);
       }
-      // Label each marker on the outer side of the measured interval, at the bottom of the numeric area.
-      ctx.fillStyle = "#ff7a00"; ctx.font = LARGE;
-      if (!z) for (const [name, t, other] of [["A", g.a, g.b], ["B", g.b, g.a]]) if (t !== null) {
-        const x = this.x(t), room = ctx.measureText(name).width + 3;
-        const left = other !== null && t < other ? x - room > L : x + room > end;
-        ctx.textAlign = left ? "right" : "left"; ctx.fillText(name, x + (left ? -3 : 3), Y - 4);
+      // Each marker carries an orange flag with its letter at the top of its line.
+      ctx.setLineDash([]); ctx.font = SMALL; ctx.textAlign = "center";
+      if (!z) for (const [name, t] of [["A", g.a], ["B", g.b]]) if (t !== null) {
+        const x = Math.round(this.x(t)) + .5;
+        ctx.fillStyle = "#ff7a00"; ctx.beginPath(); ctx.moveTo(x - 7, T); ctx.lineTo(x + 7, T); ctx.lineTo(x + 7, T + 12); ctx.lineTo(x, T + 16); ctx.lineTo(x - 7, T + 12); ctx.fill();
+        ctx.fillStyle = "#000"; ctx.fillText(name, x, T + 10);
       }
-      ctx.restore(); ctx.setLineDash([]);
+      ctx.restore();
       if (!retained && !this.lanes.some(c => c.last >= 0)) { ctx.textAlign = "center"; ctx.fillStyle = ink; ctx.fillText("Waiting for valid data", L + this.width / 2, h / 2); }
       // The header lamp shows the live state while the controls are hidden.
       this.liveBox.checked = g.live; this.element.toggleAttribute("data-live", g.live);
-      this.baseReadout = (g.live ? "Live" : "Inspecting") + ` · ${format(g.lo)}–${format(g.hi)} s · ${retained} samples` +
-        (this.sources.some(c => c.history.compacted) ? " · older history summarized" : "") +
-        (this.sources.some(c => c.history.evicted) ? " · oldest coverage expired" : "");
+      this.chip = `<span class="turbo-sse-chip"${g.live ? "" : " data-hold"}>${g.live ? "Live" : "Hold"}</span>`;
+      this.baseReadout = this.chip + pair("Window", `${format(g.lo)}–${format(g.hi)} s`) + ` <span><b>${retained}</b> samples</span>` +
+        (this.sources.some(c => c.history.compacted) ? " <span>Older history summarized</span>" : "") +
+        (this.sources.some(c => c.history.evicted) ? " <span>Oldest coverage expired</span>" : "");
       this.band(z ? d.t : g.a, z ? d.end : g.b, z);
       this.inspect();
       // Measurements are an A/B line and tables with one row per series. The row count never changes,
       // so measuring never shifts the page.
       const both = g.a !== null && g.b !== null, lo = Math.min(g.a, g.b), hi = Math.max(g.a, g.b), dt = hi - lo;
-      const first = both ? `A ${format(g.a)} s · B ${format(g.b)} s · Δt ${format(dt)} s · 1/Δt ${format(dt ? 1/dt : NaN)} Hz` :
-        g.a !== null || g.b !== null ? `A ${format(g.a ?? NaN)} s · B ${format(g.b ?? NaN)} s` : "Shift-drag, or press A and B, to measure an interval";
+      // The A/B line sets each value after its small label, as a camera's shooting screen does.
+      const mark = (label, v, unit) => `<span><small>${label}</small> <b>${format(v)}${Number.isFinite(v) ? " " + unit : ""}</b></span>`;
+      const first = mark("A", g.a ?? NaN, "s") + " " + mark("B", g.b ?? NaN, "s") + (both ? " " + mark("Δt", dt, "s") + " " + mark("1/Δt", dt ? 1 / dt : NaN, "Hz") : "");
       const rows = this.series.map(c => {
         const a = both && c.history.range(lo, hi), row = [c.label + (c.unit ? " (" + c.unit + ")" : ""), both ? 0 : "—", "—", "—", "—", "—", "—", "—", "—", "—"];
         if (!a || !a[5]) return row;
@@ -742,15 +779,21 @@
         return [c.label, at(c, g.a), at(c, g.b), more + changes, more + time.size, best < 0 ? "—" : `${c.values[best]} ${format(longest)} s (${Math.round(100 * longest / (dt || 1))}%)`];
       });
       const tables = [];
-      if (this.series.length) tables.push([["Series", "n", "min", "max", "p-p", "mean", "RMS", "σ", "Δy", "slope /s"], rows]);
-      if (this.lanes.length) tables.push([["Lane", "At A", "At B", "Changes", "Distinct", "Longest"], lanes]);
-      const text = JSON.stringify([first, tables]);
+      if (this.series.length) tables.push([["Series", "n", "min", "max", "p-p", "mean", "RMS", "σ", "Δy", "slope /s"], rows, this.series]);
+      if (this.lanes.length) tables.push([["Lane", "At A", "At B", "Changes", "Distinct", "Longest"], lanes, this.lanes]);
+      const text = JSON.stringify([first, tables.map(t => t.slice(0, 2))]);
+      this.measure.toggleAttribute("data-idle", g.a === null && g.b === null);
       if (text !== this.rows) {
         this.rows = text;
-        this.measure.replaceChildren(make("p", "", first), ...tables.map(([names, cells]) => {
+        const line = make("p", ""); line.innerHTML = first;
+        this.result.replaceChildren(line, ...tables.map(([names, cells, sources]) => {
           const table = make("table", ""), head = make("tr", "", undefined, make("thead", "", undefined, table)), body = make("tbody", "", undefined, table);
           for (const name of names) make("th", "", name, head);
-          for (const [name, ...row] of cells) { const tr = make("tr", "", undefined, body); make("th", "", name, tr); for (const cell of row) make("td", "", String(cell), tr); }
+          cells.forEach(([name, ...row], i) => {
+            const tr = make("tr", "", undefined, body), th = make("th", "", name, tr);
+            th.dataset.n = sources[i].id; th.style.setProperty("--series-color", tint(sources[i]));
+            for (const cell of row) make("td", "", String(cell), tr);
+          });
           return table;
         }));
       }
@@ -781,19 +824,18 @@
     const restarts = [];
     let graphBudget = 33554432, clockBudget = 32768, serial = 0;
     let channels = new Map(), plots = new Map(), groups = new Map();
-    let graphDirty = false, lastDraw = -Infinity, big = null, saved = 0;
+    let graphDirty = false, lastDraw = -Infinity, big = null, saved = 0, pulse = -Infinity;
     const off = new AbortController(), on = (name, fn) => addEventListener(name, fn, {signal: off.signal});
+    // The topbar: the connection state as a lit tab, readouts as small labels before values, then the keys.
+    // The jump menu drops from it: one page of a camera menu, with the query in its title row.
     const bar = document.createElement("div");
     bar.className = "turbo-sse-bar";
-    bar.innerHTML = '<span class="turbo-sse-status" role="status" aria-live="polite"></span><span class="turbo-sse-counts"></span><output></output><button type="button" class="turbo-sse-export">Export All</button><button type="button" class="turbo-sse-retry" hidden>Retry</button>';
-    const status = bar.children[0];
-    const counter = bar.children[1];
-    const note = bar.children[2];
-    const exportButton = bar.children[3];
-    const retryButton = bar.children[4];
-    const uptimeDisplay = document.createElement("span");
-    uptimeDisplay.className = "turbo-sse-uptime";
-    bar.insertBefore(uptimeDisplay, counter);
+    bar.innerHTML = '<span class="turbo-sse-status" role="status" aria-live="polite"></span><button type="button" class="turbo-sse-retry" hidden><span>Retry</span></button><span class="turbo-sse-uptime"></span><span class="turbo-sse-counts"></span><output></output>' +
+      '<button type="button" class="turbo-sse-jump" aria-haspopup="dialog" aria-expanded="false" hidden><span>Jump</span><kbd>J</kbd></button><button type="button" class="turbo-sse-export"><span>Export All</span></button>' +
+      '<div class="turbo-sse-menu" role="dialog" aria-label="Jump to a plot" hidden><label><span>Jump to</span><input role="combobox" aria-expanded="true" aria-autocomplete="list" aria-controls="turbo-sse-results" autocomplete="off" spellcheck="false" placeholder="Plot or series name"><output aria-hidden="true"></output></label>' +
+      '<ul id="turbo-sse-results" role="listbox"></ul><p><span></span><span><kbd class="turbo-sse-sign">↑</kbd><kbd class="turbo-sse-sign">↓</kbd> Select</span><span><kbd>Enter</kbd> Jump</span><span><kbd>Esc</kbd> Close</span><span role="status"></span></p></div>';
+    const [status, retryButton, uptimeDisplay, counter, note, jumpButton, exportButton, menu] = bar.children;
+    const [query, pageCount] = menu.querySelectorAll("input, output"), list = menu.querySelector("ul"), [pages, , , , found] = menu.querySelector("p").children;
     root.prepend(bar);
 
     function configError(error) {
@@ -852,15 +894,17 @@
           })}});
     }
 
+    // Counters show only when they have something to say; losses and errors are yellow.
     function counters() {
-      const s = stats();
-      let text = "Captured: " + s.retained + " · Evicted: " + s.evicted;
-      for (const [key, label] of [["omitted", "Omitted"], ["oversized", "Oversized"], ["appendDrops", "Append drops"], ["parseErrors", "JSON errors"], ["transformErrors", "Transform errors"], ["configErrors", "Config errors"], ["clockErrors", "Clock errors"], ["graphErrors", "Graph errors"], ["markerEvictions", "Expired markers"]]) {
-        if (s[key]) text += " · " + label + ": " + s[key];
+      const s = stats(), show = (node, html) => { if (node.html !== html) node.innerHTML = node.html = html; };
+      let html = "";
+      for (const [key, label] of [["retained", "Captured"], ["evicted", "Evicted"], ["omitted", "Omitted"], ["oversized", "Oversized"], ["appendDrops", "Append drops"], ["parseErrors", "JSON errors"], ["transformErrors", "Transform errors"], ["configErrors", "Config errors"], ["clockErrors", "Clock errors"], ["graphErrors", "Graph errors"], ["markerEvictions", "Expired markers"]]) {
+        if (s[key] || key == "retained" || key == "evicted") html += `<span${s[key] && !/^(retained|omitted)$/.test(key) ? " data-warn" : ""}><small>${label}</small> <b>${String(s[key]).replace(/\B(?=(\d{3})+$)/g, "\u202f")}</b></span> `;
       }
-      if (counter.textContent !== text) counter.textContent = text;
-      uptimeDisplay.textContent = s.uptime === null ? "Uptime —" + (clock.value === null ? "" : " (unsynchronized)") :
-        "Uptime ≈" + [Math.floor(s.uptime / 3600), Math.floor(s.uptime / 60) % 60, Math.floor(s.uptime) % 60].map(v => String(v).padStart(2, "0")).join(":");
+      show(counter, html);
+      show(uptimeDisplay, "<small>Uptime</small> <b>" + (s.uptime === null ? "—" + (clock.value === null ? "" : " (unsynchronized)") :
+        "≈" + [Math.floor(s.uptime / 3600), Math.floor(s.uptime / 60) % 60, Math.floor(s.uptime) % 60].map(v => String(v).padStart(2, "0")).join(":")) + "</b>");
+      exportButton.toggleAttribute("data-unsaved", counts.received > saved);
       if (Array.from(groups.values()).some(g => g.live)) invalidate();
     }
 
@@ -881,9 +925,94 @@
         }
         e.style.top = max ? Math.max(0, bar.getBoundingClientRect().bottom) + "px" : "";
         put(p.full.firstChild, max ? "Reduce" : "Enlarge");
+        // The title bar counts the plots, ‹ 2/4 ›, and the guide shows a square for each, the current one orange.
+        put(p.page, all.indexOf(p) + 1 + "/" + all.length);
+        if (max) p.squares.innerHTML = all.map(q => q === p ? "<i data-on></i>" : "<i></i>").join("");
       }
       invalidate();
     }
+
+    // Steps the enlarged view to a neighbouring plot. The enlarged view keeps its one history entry.
+    function page(step) {
+      const all = Array.from(plots.values()), shown = all.filter(p => p === big || p.host.getClientRects().length);
+      if (!big || shown.length < 2) return;
+      show(shown[(shown.indexOf(big) + step + shown.length) % shown.length]);
+    }
+
+    // Brings a plot into use: enlarged in place of the enlarged one, or scrolled to just below the topbar.
+    function show(plot, series) {
+      if (big) { if (plot !== big) { history.replaceState({turboSSE: Array.from(plots.values()).indexOf(plot) + 1}, ""); enlarge(); } }
+      else scrollTo(scrollX, scrollY + plot.element.getBoundingClientRect().top - bar.getBoundingClientRect().bottom - 8);
+      plot.canvas.focus({preventScroll: true});
+      plot.choose(series);
+    }
+
+    // Jump to a plot: type part of a plot title or series name. Exact and leading matches rank first, then word
+    // starts, initials and matches anywhere; units and event names count from three letters on. An empty query
+    // lists every plot with its series. Six rows make a page, as in a camera menu.
+    let results = [], chosen = 0, opener = null;
+    function rank(name, extra, q) {
+      const n = name.toLowerCase(), i = n.indexOf(q), words = n.split(/[\s/_-]+/);
+      return !q ? 1 : n === q ? 6 : !i ? 5 : i > 0 && /[\s/_-]/.test(n[i - 1]) ? 4 : words.map(w => w[0]).join("").startsWith(q) ? 3 : i > 0 ? 2 : q.length > 2 && extra.toLowerCase().split(/\s+/).some(w => w && w.startsWith(q)) ? 1 : 0;
+    }
+    function search() {
+      const q = query.value.trim().toLowerCase(), all = [];
+      for (const p of plots.values()) {
+        all.push({p, name: p.title, extra: p.units});
+        for (const c of p.sources) all.push({p, c, name: c.label, extra: c.unit + " " + c.event});
+      }
+      results = all.map((x, k) => Object.assign(x, {k, r: rank(x.name, x.extra, q)})).filter(x => x.r);
+      if (q) results.sort((a, b) => b.r - a.r || !!a.c - !!b.c || a.k - b.k);
+      chosen = Math.max(0, Math.min(chosen, results.length - 1));
+      const count = Math.max(1, Math.ceil(results.length / 6)), at = chosen / 6 | 0;
+      pageCount.textContent = `‹${at + 1}/${count}›`;
+      pages.innerHTML = Array.from({length: count}, (_, i) => i === at ? "<i data-on></i>" : "<i></i>").join("");
+      found.textContent = results.length + (results.length === 1 ? " match" : " matches");
+      list.replaceChildren(...(results.length ? results.slice(at * 6, at * 6 + 6) : [null]).map((x, k) => {
+        const li = make("li", "");
+        li.setAttribute("role", "option");
+        if (!x) { li.textContent = "No plot or series matches “" + query.value + "”"; li.setAttribute("aria-disabled", "true"); return li; }
+        const index = at * 6 + k, start = q ? x.name.toLowerCase().indexOf(q) : -1, name = make("b", "", start < 0 ? x.name : x.name.slice(0, start), li), c = x.c;
+        if (start >= 0) { make("mark", "", x.name.slice(start, start + q.length), name); name.append(x.name.slice(start + q.length)); }
+        li.id = "turbo-sse-result-" + index; li.dataset.i = index;
+        li.setAttribute("aria-selected", index === chosen);
+        if (c) {
+          li.dataset.n = c.id; li.style.setProperty("--series-color", tint(c));
+          make("small", "", x.p.title, li);
+          const v = make("b", "", c.lane || c.text === undefined ? c.text || "—" : format(numeric(c.text)), li);
+          if (c.unit && !c.lane && c.text && c.text !== "—") make("small", "", " " + c.unit, v);
+        } else { li.dataset.plot = ""; make("small", "", x.p.sources.length + " series" + (x.p.units ? " · " + x.p.units : ""), li); }
+        return li;
+      }));
+      query.setAttribute("aria-activedescendant", results.length ? "turbo-sse-result-" + chosen : "");
+    }
+    function jump(open) {
+      if (open === !menu.hidden) return;
+      menu.hidden = !open; jumpButton.setAttribute("aria-expanded", open);
+      if (open) { opener = document.activeElement; query.value = ""; chosen = 0; search(); query.focus(); }
+      else if (menu.contains(document.activeElement) && opener) opener.focus();
+    }
+    function go(i) {
+      const x = results[i];
+      if (!x) return;
+      opener = null; jump(false); show(x.p, x.c);
+    }
+    query.addEventListener("input", () => { chosen = 0; search(); });
+    query.addEventListener("keydown", event => {
+      const key = event.key, n = results.length;
+      event.stopPropagation();  // Typing here never reaches the plots' shortcuts.
+      if (key === "ArrowDown" || key === "ArrowUp") { if (n) chosen = (chosen + (key === "ArrowDown" ? 1 : n - 1)) % n; }
+      else if (key === "PageDown" || key === "PageUp") { if (n) chosen = Math.max(0, Math.min(n - 1, chosen + (key === "PageDown" ? 6 : -6))); }
+      else if (key === "Enter") go(chosen);
+      else if (key === "Escape") jump(false);
+      else return;
+      event.preventDefault();
+      if (!menu.hidden) search();
+    });
+    list.addEventListener("pointerdown", event => event.preventDefault());
+    list.addEventListener("pointermove", event => { const li = event.target.closest("[data-i]"); if (li && +li.dataset.i !== chosen) { chosen = +li.dataset.i; search(); } });
+    list.addEventListener("click", event => { const li = event.target.closest("[data-i]"); if (li) go(+li.dataset.i); });
+    pageCount.addEventListener("click", () => { chosen = (chosen / 6 | 0) * 6 + 6; if (chosen >= results.length) chosen = 0; search(); query.focus(); });
 
     function fragment(element, text, html) {
       if (!html) return document.createTextNode(text);
@@ -939,15 +1068,16 @@
           if (g.live) { const end = Math.max(r[1], (performance.now() - started) / 1000); g.lo = Math.max(r[0], end - g.window); g.hi = Math.max(g.lo + .001, end); }
           else if (g.hi < r[0]) { const span = g.hi - g.lo; g.lo = r[0]; g.hi = Math.max(g.lo + .001, Math.min(r[1], g.lo + span)); g.cursor = null; }
         }
-        // A resting pointer keeps its crosshair under it while the view follows new data, pans or zooms.
-        for (const p of plots.values()) if (p.pointer != null) p.view.cursor = p.at(p.pointer);
         for (const g of groups.values()) g.gutter = 0;
         for (const p of plots.values()) p.view.gutter = Math.max(p.view.gutter, p.need);
+        // A resting pointer keeps its crosshair under it while the view follows new data, pans or zooms.
+        for (const p of plots.values()) if (p.pointer != null) { p.left = p.view.gutter; p.width = Math.max(1, p.area.clientWidth - p.left - 16); p.view.cursor = p.at(p.pointer); }
         for (const p of plots.values()) {
           if (p.failed || big && p !== big) continue;  // Plots behind an enlarged one rest.
           try { p.draw(); }
           catch (error) { counts.graphErrors++; p.failed = true; p.readout.textContent = "Graph error: " + error.message; }
         }
+        for (const p of plots.values()) if (p.need > p.view.gutter) invalidate();
       }
     }
 
@@ -955,6 +1085,7 @@
       if (dead) return;
       const elapsed = performance.now();
       lastReceive = elapsed;
+      if (elapsed - pulse > 100) { pulse = elapsed; status.toggleAttribute("data-pulse", true); setTimeout(() => status.removeAttribute("data-pulse"), 60); }
       lastId = event.lastEventId;
       counts.received++;
       const record = {time: Date.now(), elapsed: elapsed - started, event: event.type, id: lastId, data: event.data,
@@ -1133,13 +1264,17 @@
           let plot = plots.get(host);
           if (plot && (plot.signature !== signature || plot.view !== view)) { plot.destroy(); plot = null; }
           if (!plot) plot = new Plot(host, series, view, {invalidate, extent, restarts: () => restarts,
-            cursor: g => { for (const p of plots.values()) if (p.view === g) p.inspect(); }, export: showExports, enlarge, now: () => (performance.now() - started) / 1000});
+            cursor: g => { for (const p of plots.values()) if (p.view === g) p.inspect(); }, export: showExports, enlarge, page, now: () => (performance.now() - started) / 1000});
           plot.signature = signature;
           nextPlots.set(host, plot);
         } catch (error) { configError(error); }
       }
       for (const [host, plot] of plots) if (!nextPlots.has(host)) plot.destroy();
       plots = nextPlots; groups = nextGroups; elements = next;
+      // Jumping needs two plots; with fewer, the key and its hint go.
+      jumpButton.hidden = plots.size < 2;
+      for (const p of plots.values()) p.guide.children[8].hidden = jumpButton.hidden;
+      if (jumpButton.hidden) jump(false); else if (!menu.hidden) search();
       enlarge(); counters();
     }
 
@@ -1238,7 +1373,7 @@
       const url = URL.createObjectURL(new Blob([csv], {type: "text/csv;charset=utf-8"}));
       const link = document.createElement("a"); link.href = url; link.download = "sse-" + stamp() + ".csv"; link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      saved = counts.received;
+      saved = counts.received; counters();
       return csv;
     }
 
@@ -1346,7 +1481,7 @@
           exportURLs.push(url); link.href = url; link.download = "sse-" + prefix + ".zip"; link.click();
           setTimeout(() => URL.revokeObjectURL(url), 60000);
           note.textContent = "";
-          if (!selected) saved = mark;
+          if (!selected) { saved = mark; counters(); }
         }
       } catch (error) {
         if (valid()) note.textContent = error.message;
@@ -1357,6 +1492,12 @@
     const retry = () => connect(true);
     exportButton.addEventListener("click", exportClick);
     retryButton.addEventListener("click", retry);
+    jumpButton.addEventListener("click", () => jump(menu.hidden));
+    // J or / opens the jump menu, unless you are typing in a field of the page; a press elsewhere closes it.
+    on("keydown", event => {
+      if (!event.ctrlKey && !event.metaKey && !event.altKey && !typing(event) && !jumpButton.hidden && (event.key === "j" || event.key === "J" || event.key === "/")) { event.preventDefault(); jump(true); }
+    });
+    on("pointerdown", event => { if (!bar.contains(event.target)) jump(false); });
     on("popstate", () => enlarge());
     on("resize", () => enlarge());
     // Leaving the page loses everything received since the last Export All, so the browser asks first.

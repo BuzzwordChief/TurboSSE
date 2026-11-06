@@ -1,6 +1,7 @@
-/* TurboSSE styling, after a camera's menu: true black, white readouts, gray labels and 1 px rules. Each kind of
-   bar has its own finish: the topbar is the tab strip, with the connection state as its lit tab; plot headers are
-   title bars; the active plot wears the orange selection bar; keys are filled glyphs.
+/* TurboSSE styling, after the classic Sony camera screens: true black, white values, gray labels and thin rules.
+   Each kind of surface has its own finish. The topbar is the menu's tab strip and the only hard-horizon gloss,
+   with the connection state as its lit tab. Plot headers are title bars with a soft gloss, and the active plot
+   wears the orange bar. Selected rows and tiles take the menu's copper selection. Keys are filled glyphs.
    Orange marks what you have selected, green is live, yellow is in between and red is a fault.
    The first part is a classless base for the whole page; the second styles the interface TurboSSE generates. */
 
@@ -8,141 +9,233 @@
 *, ::before, ::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
 /* The page content, and the TurboSSE topbar content, stay within the page width. A column is at least the
-   column width wide. */
-:root { --turbo-sse-page-width: 2560px; --turbo-sse-column: 460px; color-scheme: dark; }
-body { margin: 0; color: #c8c8c8; background: #000; font: 12px/1.4 "Helvetica Neue", helvetica, arial, sans-serif; }
+   column width wide. Titles and values use the condensed face each system has. */
+:root { --turbo-sse-page-width: 2560px; --turbo-sse-column: 460px; --turbo-sse-cond: "Helvetica Neue", Bahnschrift, "Roboto Condensed", "Arial Narrow", sans-serif-condensed, sans-serif; --turbo-sse-select: linear-gradient(#f39a52, #dd6a1a 52%, #bd540c); color-scheme: dark; }
+body { margin: 0; color: #cfcfcf; background: #000; font: 13px/1.4 "Helvetica Neue", helvetica, arial, sans-serif; }
 /* Direct <section> children of <main> are columns of one grid: as many as fit, all the same width, so their time
    axes line up from row to row. --n counts them, so that a few sections share the whole row; four form two rows
    of two until all four fit side by side. Everything else in <main> takes a full-width row. */
-main { --n: 9; --pair: 0px; display: grid; grid-template-columns: repeat(auto-fill, minmax(max(min(var(--turbo-sse-column), 100%), (100% + 10px) / var(--n) - 10.1px, var(--pair)), 1fr)); align-items: start; gap: 0 10px; max-width: var(--turbo-sse-page-width); margin: 0 auto; padding: 6px 10px 16px; }
+main { --n: 9; --pair: 0px; display: grid; grid-template-columns: repeat(auto-fill, minmax(max(min(var(--turbo-sse-column), 100%), (100% + 12px) / var(--n) - 12.1px, var(--pair)), 1fr)); align-items: start; gap: 0 12px; max-width: var(--turbo-sse-page-width); margin: 0 auto; padding: 14px 12px 18px; }
 main:has(> section) { --n: 1; }
 main:has(> section:nth-of-type(2)) { --n: 2; }
 main:has(> section:nth-of-type(3)) { --n: 3; }
-main:has(> section:nth-of-type(4)) { --n: 4; --pair: min(50% - 5.1px, max(0px, (4 * var(--turbo-sse-column) + 30px - 100%) * 9999)); }
+main:has(> section:nth-of-type(4)) { --n: 4; --pair: min(50% - 6.1px, max(0px, (4 * var(--turbo-sse-column) + 36px - 100%) * 9999)); }
 main:has(> section:nth-of-type(5)) { --n: 5; --pair: 0px; }
 main:has(> section:nth-of-type(6)) { --n: 9; }
 main > * { grid-column: 1 / -1; min-width: 0; }
 main > section { grid-column: auto; }
-main > header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 12px; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid #fff; }
-main > header > p { margin: 0; color: #969696; }
-/* Titles and readouts share one bold, narrow face; labels and prose use the plain one. */
-h1, h2, h3, caption, .turbo-sse-plot > header, .turbo-sse-status, .turbo-sse-uptime, .turbo-sse-series-value { margin: 0; color: #fff; font-family: "DIN Alternate", bahnschrift, sans-serif; font-weight: 700; }
-h1 { font-size: 24px; }
-h2 { font-size: 16px; }
-h3, caption, .turbo-sse-plot > header { padding: 3px 6px; font-size: 13px; text-align: left; }
+main > header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin-bottom: 12px; padding-bottom: 9px; border-bottom: 1px solid #ffffff3a; }
+main > header > p { margin: 0; color: #8f8f8f; }
+h1, h2, h3, caption, summary, :is(.turbo-sse-uptime, .turbo-sse-counts) :is(b, small), .turbo-sse-status, button, .turbo-sse-plot label, .turbo-sse-plot > header, .turbo-sse-legend b, .turbo-sse-chip, .turbo-sse-measure p, .turbo-sse-guide b, .turbo-sse-cursor::after, .turbo-sse-cross-y::before, .turbo-sse-menu :is(span, input, output, b), [data-n]::before { margin: 0; color: #fff; font-family: var(--turbo-sse-cond); font-stretch: condensed; font-weight: 700; }
+h1 { font-size: 27px; line-height: 1.1; }
+h2 { font-size: 18px; }
+h3 { padding: 2px 6px 6px; font-size: 15px; }
 p { margin: 6px 0; }
 a { color: inherit; }
 a:hover { color: #ff7a00; }
-table { width: 100%; margin-bottom: 10px; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-th, td { padding: 2px 6px; color: #969696; border-bottom: 1px solid #383838; font-weight: 400; text-align: left; vertical-align: top; }
+/* Tables read like menu lists: quiet captions, gray labels, white values and thin rules. A row of one label and
+   one value is a menu row, with the value on the right in the bold face. */
+table { width: 100%; margin-bottom: 12px; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+caption { padding: 2px 6px 8px; font-size: 16px; line-height: 1; text-align: left; border-bottom: 1px solid #ffffff3a; }
+th, td { padding: 4px 6px; color: #8f8f8f; border-bottom: 1px solid #1c1c1c; font-weight: 400; text-align: left; vertical-align: top; }
 td { color: #fff; }
-tbody th { width: 1%; white-space: nowrap; }
-hr { margin: 10px 0; border: 0; border-top: 1px solid #383838; }
-details { margin: 6px 0; padding-top: 6px; border-top: 1px solid #383838; }
-summary { color: #fff; font-weight: 700; cursor: pointer; }
-details > section { margin-top: 6px; border: 1px solid #383838; }
-pre { max-height: 240px; margin: 0; padding: 3px 6px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.5 ui-monospace, menlo, consolas, monospace; }
-footer { margin-top: 10px; color: #969696; font-size: 11px; }
-/* Title bars and buttons share a gray gloss. */
-h3, caption, .turbo-sse-plot > header, button, .turbo-sse-plot label { background: linear-gradient(#fff3, #fff0) #1c1c1c; }
-button, .turbo-sse-plot label { margin: 0 0 0 4px; padding: 1px 6px; color: #fff; border: 1px solid #5e5e5e; border-radius: 0; font: inherit; white-space: nowrap; cursor: pointer; }
-button:hover, .turbo-sse-plot label:hover { border-color: #ff7a00; }
-button:active { color: #000; background-color: #ff7a00; border-color: #ff7a00; }
+tbody th { width: 1%; color: #cfcfcf; white-space: nowrap; }
+tr:has(> th:first-child + td:last-child) > * { height: 30px; vertical-align: middle; }
+tr > th:first-child + td:last-child, thead th:first-child + th:last-child { text-align: right; }
+tbody tr > th:first-child + td:last-child { font: 700 17px/1 var(--turbo-sse-cond); font-stretch: condensed; }
+hr { margin: 12px 0; border: 0; border-top: 1px solid #262626; }
+details { margin: 6px 0; padding-top: 6px; border-top: 1px solid #262626; }
+summary { font-size: 15px; cursor: pointer; }
+details > section { margin-top: 6px; border: 1px solid #262626; }
+pre { max-height: 240px; margin: 0; padding: 4px 6px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.5 ui-monospace, menlo, consolas, monospace; }
+footer { margin-top: 12px; color: #8f8f8f; font-size: 11px; }
+/* Keys: equal heights, condensed capitals, a soft gloss; the copper selection while pressed. */
+button, .turbo-sse-plot label { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 22px; margin: 0; padding: 0 7px; background: linear-gradient(#ffffff24, #ffffff00) #1c1c1c; border: 1px solid #575757; border-radius: 2px; box-shadow: inset 0 1px 0 #ffffff1c; font-size: 11px; line-height: 1; letter-spacing: .07em; text-transform: uppercase; white-space: nowrap; cursor: pointer; }
+button:has(kbd), .turbo-sse-plot label { padding-right: 4px; }
+button:hover, .turbo-sse-plot label:hover { border-color: #fff; }
+button:active { background: var(--turbo-sse-select); border-color: #f39a52; }
 button:disabled { color: #5e5e5e; background: #000; border-color: #383838; cursor: default; }
-/* Keys are filled glyphs, 13 px tall. The fixed line box centers a capital letter in the key and the key on the
-   text beside it. Arrows and signs sit lower in their line than capitals, so their keys lift them by a pixel. */
-kbd { display: inline-block; min-width: 13px; padding: 0 3px; color: #000; background: linear-gradient(#f4f4f4, #a8a8a8); border-radius: 2px; font: 700 9px/13px "Helvetica Neue", helvetica, arial, sans-serif; text-align: center; }
-.turbo-sse-sign { padding-bottom: 2px; line-height: 11px; }
+/* Key glyphs are filled light keys, 14 px tall, named in capitals like the camera's MENU key. Each glyph is centered
+   by its ink: capitals fill the line box as set; arrows, signs and brackets sit lower in it, so their keys lift them. */
+kbd { display: inline-block; min-width: 14px; height: 14px; padding: 0 3px; color: #000; background: linear-gradient(#fbfbfb, #b6b6b6); border-radius: 2px; box-shadow: inset 0 -1px 0 #0003; font: 700 9px/14px "Helvetica Neue", helvetica, arial, sans-serif; letter-spacing: 0; text-align: center; text-transform: uppercase; text-shadow: none; }
+kbd + kbd { margin-left: 2px; }
+.turbo-sse-sign { line-height: 12px; padding-bottom: 2px; }
 :focus-visible { outline: 2px solid #ff7a00; outline-offset: 1px; }
 ::selection { color: #000; background: #ff7a00; }
 
 /* Generated interface. */
-.turbo-sse-bar, .turbo-sse-plot { color: #c8c8c8; background: #000; font: 12px/1.4 "Helvetica Neue", helvetica, arial, sans-serif; font-variant-numeric: tabular-nums; }
-/* The topbar is the tab strip: glossy black, taller than a title bar, with the connection state as its lit tab
-   and as the rule below it. */
-.turbo-sse-bar { --turbo-sse-state: #ffd400; position: sticky; top: 0; z-index: 1000; display: flex; flex-wrap: wrap; align-items: center; gap: 0 14px; padding: 0 max(10px, 50% - var(--turbo-sse-page-width) / 2 + 10px); background: linear-gradient(#444, #161616 50%, #000); border-bottom: 2px solid var(--turbo-sse-state); font-size: 13px; }
-.turbo-sse-bar[data-state=connected] { --turbo-sse-state: #2fd060; }
+.turbo-sse-bar, .turbo-sse-plot { color: #cfcfcf; background: #000; font: 13px/1.4 "Helvetica Neue", helvetica, arial, sans-serif; font-variant-numeric: tabular-nums; }
+/* The topbar is the tab strip: 44 px, the only hard-horizon gloss, with the connection state as its lit tab
+   joined to the 2 px rule under the whole bar. Readouts are small labels before values, as on a shooting screen. */
+.turbo-sse-bar { --turbo-sse-state: #ffcc00; position: sticky; top: 0; z-index: 1000; display: flex; flex-wrap: wrap; align-items: center; column-gap: 20px; min-height: 44px; padding: 0 max(12px, 50% - var(--turbo-sse-page-width) / 2 + 12px); background: linear-gradient(#3b3b3b, #1d1d1d 50%, #080808 50%, #000); box-shadow: inset 0 1px 0 #ffffff26, inset 0 -2px 0 var(--turbo-sse-state); container-type: inline-size; }
+.turbo-sse-bar[data-state=connected] { --turbo-sse-state: #34d058; }
 .turbo-sse-bar[data-state=disconnected], .turbo-sse-bar[data-state=stalled] { --turbo-sse-state: #ff3b30; }
-.turbo-sse-status { padding: 6px 12px; color: #000; background: linear-gradient(#fff8, #fff0 50%, #0003) var(--turbo-sse-state); }
-.turbo-sse-counts { color: #969696; font-size: 12px; white-space: nowrap; }
-.turbo-sse-bar output:empty { display: none; }
-/* Export All stays at the right edge, also when a narrow bar wraps it onto its own row. */
-.turbo-sse-bar button { margin-block: 4px; font-size: 12px; }
-.turbo-sse-export { margin-left: auto; }
-/* Icons are 11 px pictograms with 1 px strokes, drawn as masks so they take the text color. The state tab shows a
-   pulse while connected and a flat line otherwise. */
-.turbo-sse-status::before, .turbo-sse-bar button::before, .turbo-sse-plot button::before { content: ""; display: inline-block; width: 11px; height: 11px; margin-right: 5px; background: currentColor; vertical-align: -1px; }
-.turbo-sse-status::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' fill='none' stroke='red'><path d='M0 5.5h11'/></svg>"); }
-[data-state=connected] > .turbo-sse-status::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' fill='none' stroke='red'><path d='M0 5.5h2.5l1.5-4 2.5 8 1.5-4h3'/></svg>"); }
-.turbo-sse-export::before, [data-action^=Export]::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' fill='none' stroke='red'><path d='M5.5 0v7.5M2.5 4.5l3 3 3-3M.5 8v2.5h10V8'/></svg>"); }
-.turbo-sse-retry::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' fill='none' stroke='red'><path d='M9.5 6.5A4.2 4.2 0 1 1 8.5 2.5M8.5 0v2.5H6'/></svg>"); }
-[data-action=Fit]::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' fill='none' stroke='red'><path d='M.5 3.5v-3h3M7.5.5h3v3M10.5 7.5v3h-3M3.5 10.5h-3v-3'/></svg>"); }
-[data-action=Back]::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' fill='none' stroke='red'><path d='M3.5 1.5l-3 3 3 3M.5 4.5h10v5h-6'/></svg>"); }
-[data-action=Enlarge]::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' fill='none' stroke='red'><path d='M6.5.5h4v4M10.5.5l-4 4M.5 6.5v4h4M.5 10.5l4-4'/></svg>"); }
-[data-max] [data-action=Enlarge]::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 11' fill='none' stroke='red'><path d='M10.5 4.5h-4v-4M6.5 4.5l4-4M.5 6.5h4v4M4.5 6.5l-4 4'/></svg>"); }
-[data-sse-graph] { margin-bottom: 10px; }
-/* The active plot wears the selection frame, and its header the selection bar. Pressing that bar enlarges the
-   plot, or brings an enlarged plot back. Lamps show each plot's live state and its Live switch; lit is green. */
-.turbo-sse-plot { min-width: 0; border: 1px solid #383838; container-type: inline-size; }
+.turbo-sse-status { display: flex; align-items: center; gap: 8px; align-self: stretch; min-height: 44px; padding: 0 14px 2px 12px; color: #000; background: linear-gradient(#fff8, #fff3 50%, #0000 50%, #0002) var(--turbo-sse-state); box-shadow: inset 0 1px 0 #ffffffa0, inset -1px 0 0 #0005; font-size: 14px; letter-spacing: .07em; text-transform: uppercase; white-space: nowrap; }
+/* The activity lamp flashes with incoming events; without motion it stays lit while connected. */
+.turbo-sse-status::after { content: ""; width: 7px; height: 7px; background: #0006; box-shadow: inset 0 0 0 1px #0008; }
+[data-state=connected] > [data-pulse]::after { background: #fff; box-shadow: 0 0 6px #fff, inset 0 0 0 1px #0004; }
+@media (prefers-reduced-motion: reduce) { [data-state=connected] > .turbo-sse-status::after { background: #fff; } }
+.turbo-sse-uptime, .turbo-sse-counts > span { display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.turbo-sse-counts { display: flex; flex-wrap: wrap; column-gap: 20px; }
+:is(.turbo-sse-uptime, .turbo-sse-counts) small { color: #8f8f8f; font-size: 10px; line-height: 1; letter-spacing: .1em; text-transform: uppercase; }
+:is(.turbo-sse-uptime, .turbo-sse-counts) b { font-size: 18px; line-height: 1; }
+.turbo-sse-uptime b { font-size: 21px; letter-spacing: .02em; }
+.turbo-sse-counts [data-warn] b { color: #ffcc00; }
+/* Export progress and errors push the keys to the right edge. */
+.turbo-sse-bar > output { margin-left: auto; color: #fff; }
+.turbo-sse-bar > button { height: 28px; margin-block: 8px; padding-inline: 12px; font-size: 12px; background: linear-gradient(#4b4b4b, #2a2a2a 50%, #1a1a1a 50%, #111); border-color: #6c6c6c; border-radius: 3px; box-shadow: inset 0 1px 0 #ffffff33; }
+.turbo-sse-bar > button:has(kbd) { padding-right: 6px; }
+.turbo-sse-bar > button + button { margin-left: -12px; }
+.turbo-sse-jump[aria-expanded=true] { background: var(--turbo-sse-select); border-color: #f39a52; }
+.turbo-sse-export[data-unsaved]::after { content: ""; position: absolute; top: -4px; right: -4px; width: 9px; height: 9px; border-radius: 50%; background: #ffcc00; box-shadow: 0 0 0 2px #000; }
+/* A narrow topbar wraps into two rows: the state and uptime, then the counters and keys, which show icons only. */
+@container (max-width: 600px) { .turbo-sse-uptime { flex: 1 0 auto; } .turbo-sse-bar > button > * { display: none; } .turbo-sse-bar > button { padding-inline: 9px; } }
+/* Icons are pictograms with 1 px strokes, drawn as masks so they take the text color. The state tab shows a pulse
+   while connected and a flat line otherwise. */
+.turbo-sse-status::before, .turbo-sse-bar > button::before, .turbo-sse-tools button::before, .turbo-sse-menu [data-plot]::before { content: ""; flex: none; width: 12px; height: 12px; background: currentColor; mask-position: center; mask-size: contain; mask-repeat: no-repeat; }
+.turbo-sse-status::before { width: 14px; height: 14px; mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14' fill='none' stroke='red' stroke-width='1.6'><path d='M0 7h14'/></svg>"); }
+[data-state=connected] > .turbo-sse-status::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14' fill='none' stroke='red' stroke-width='1.6' stroke-linejoin='round'><path d='M0 7h3l2-5 3.5 10 2-5H14'/></svg>"); }
+.turbo-sse-export::before, [data-action^=Export]::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='red' stroke-width='1.2'><path d='M6 .6v7.8M2.8 5.2L6 8.4l3.2-3.2M.6 8.6v2.8h10.8V8.6'/></svg>"); }
+.turbo-sse-jump::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='red' stroke-width='1.3'><circle cx='5' cy='5' r='4'/><path d='M8 8l3.4 3.4'/></svg>"); }
+.turbo-sse-retry::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='red' stroke-width='1.2'><path d='M10.4 7A4.6 4.6 0 1 1 9.3 2.7M9.3 0v2.8H6.5'/></svg>"); }
+[data-action=Fit]::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='red' stroke-width='1.2'><path d='M.6 3.6v-3h3M8.4.6h3v3M11.4 8.4v3h-3M3.6 11.4h-3v-3'/></svg>"); }
+[data-action=Back]::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='red' stroke-width='1.2'><path d='M3.6 1.6l-3 3 3 3M.6 4.6h10.8v5.8H5'/></svg>"); }
+[data-action=Enlarge]::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='red' stroke-width='1.2'><path d='M7 .6h4.4V5M11.4.6L7 5M.6 7v4.4H5M.6 11.4L5 7'/></svg>"); }
+[data-max] [data-action=Enlarge]::before { mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='red' stroke-width='1.2'><path d='M11.4 5H7V.6M7 5l4.4-4.4M.6 7H5v4.4M5 7L.6 11.4'/></svg>"); }
+.turbo-sse-menu [data-plot]::before { width: 15px; height: 15px; color: #8f8f8f; mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 15 15' fill='none' stroke='red' stroke-width='1.2'><rect x='.6' y='.6' width='13.8' height='13.8' rx='1'/><path d='M2.5 10.5l3-3.5 2.5 2 4.5-5'/></svg>"); }
+/* The jump menu is one page of a camera menu: the query in the title row with the page counter, six rows with
+   the name on the left and the current value on the right, the copper selection, and page squares and key hints
+   along the bottom. */
+.turbo-sse-menu { position: absolute; top: calc(100% + 6px); right: max(12px, 50% - var(--turbo-sse-page-width) / 2 + 12px); width: min(100% - 24px, 560px); background: #000; border: 1px solid #8a8a8a; box-shadow: 0 0 0 1px #000, 0 22px 50px #000; font-size: 12px; }
+.turbo-sse-menu label { display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 12px; border-bottom: 1px solid #5a5a5a; }
+.turbo-sse-menu label > span { color: #ff7a00; font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; }
+.turbo-sse-menu input { flex: 1; min-width: 0; padding: 0; background: none; border: 0; outline: 0; caret-color: #ff7a00; font-size: 21px; }
+.turbo-sse-menu input::placeholder { color: #5c5c5c; }
+.turbo-sse-menu output { margin-left: auto; font-size: 13px; cursor: pointer; }
+.turbo-sse-menu ul { min-height: 188px; margin: 0; padding: 4px 0; list-style: none; }
+.turbo-sse-menu li { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px; white-space: nowrap; cursor: pointer; }
+.turbo-sse-menu li b { font-size: 17px; line-height: 1; }
+.turbo-sse-menu small { overflow: hidden; color: #8f8f8f; text-overflow: ellipsis; }
+.turbo-sse-menu li > :last-child { margin-left: auto; padding-left: 12px; }
+.turbo-sse-menu b small { color: #8f8f8f; font: 400 12px "Helvetica Neue", helvetica, arial, sans-serif; }
+.turbo-sse-menu [aria-selected=true] { background: var(--turbo-sse-select); box-shadow: inset 0 1px 0 #ffffff59, inset 0 -1px 0 #0003; text-shadow: 0 1px 0 #0005; }
+.turbo-sse-menu [aria-selected=true] :is(small, b small), .turbo-sse-menu [aria-selected=true]::before { color: #fff; }
+.turbo-sse-menu [aria-disabled] { color: #5c5c5c; cursor: default; }
+.turbo-sse-menu mark { color: inherit; background: none; text-decoration: underline 1.5px; text-underline-offset: 3px; }
+.turbo-sse-menu p { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; min-height: 32px; margin: 0; padding: 6px 12px; border-top: 1px solid #5a5a5a; }
+.turbo-sse-menu p > span { display: inline-flex; align-items: center; gap: 4px; color: #cfcfcf; font: inherit; }
+.turbo-sse-menu p > :first-child { margin-right: auto; }
+.turbo-sse-menu [role=status] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+/* Page squares, the current one orange. */
+.turbo-sse-menu p > :first-child, .turbo-sse-guide i { display: inline-flex; gap: 3px; }
+:is(.turbo-sse-menu p > :first-child, .turbo-sse-guide i) i { width: 8px; height: 8px; background: #5f5f5f; box-shadow: inset 0 1px 0 #ffffff30; }
+.turbo-sse-menu [data-on], .turbo-sse-guide [data-on] { background: #ff7a00; }
+[data-sse-graph] { margin-bottom: 12px; }
+/* The active plot wears the orange frame, and its header the orange bar. Pressing that bar enlarges the plot, or
+   brings an enlarged plot back. Lamps show each plot's live state and its Live switch; lit is green. */
+.turbo-sse-plot { min-width: 0; border: 1px solid #3a3a3a; container-type: inline-size; }
 .turbo-sse-plot[data-active] { border-color: #ff7a00; outline: 1px solid #ff7a00; }
-.turbo-sse-plot > header { display: flex; justify-content: space-between; gap: 8px; }
-.turbo-sse-plot > header > span { color: #969696; }
-.turbo-sse-plot[data-active] > header, .turbo-sse-plot[data-active] > header > span { color: #000; }
-.turbo-sse-plot[data-active] > header { background-color: #ff7a00; cursor: zoom-in; }
+.turbo-sse-plot > header { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; font-size: 15px; line-height: 1; background: linear-gradient(#ffffff30, #ffffff00) #1c1c1c; box-shadow: inset 0 1px 0 #ffffff24, inset 0 -1px 0 #000; }
+.turbo-sse-plot > header > span { margin-left: auto; color: #8f8f8f; font-size: 14px; }
+.turbo-sse-plot[data-active] > header, .turbo-sse-plot[data-active] > header * { color: #000; }
+.turbo-sse-plot[data-active] > header { background: linear-gradient(#ffffff66, #ffffff00 70%) #ff7a00; box-shadow: inset 0 1px 0 #ffffffa8, inset 0 -1px 0 #0003; cursor: zoom-in; }
 .turbo-sse-plot[data-max] > header { cursor: zoom-out; }
-.turbo-sse-plot > header > strong::before, .turbo-sse-plot input { content: ""; display: inline-block; appearance: none; width: 8px; height: 8px; margin: 0 6px 0 0; color: #969696; background: #000; border: 1px solid; border-radius: 50%; box-shadow: 0 0 0 1px #000; }
-.turbo-sse-plot[data-live] > header > strong::before, .turbo-sse-plot :checked { color: #2fd060; background: currentColor; }
+.turbo-sse-plot > header > strong::before, .turbo-sse-plot input { content: ""; display: inline-block; appearance: none; width: 9px; height: 9px; margin: 0 8px 0 0; color: #8f8f8f; background: #000; border: 1px solid; border-radius: 50%; box-shadow: 0 0 0 1px #000; }
+.turbo-sse-plot input { margin: 0; }
+.turbo-sse-plot[data-live] > header > strong::before, .turbo-sse-plot :checked { color: #34d058; background: currentColor; box-shadow: 0 0 0 1px #000, 0 0 6px #34d058aa; }
+/* The pager shows in the enlarged view only. */
+.turbo-sse-plot nav { display: flex; align-items: center; margin-left: auto; font-size: 13px; letter-spacing: .06em; }
+.turbo-sse-plot nav output { color: inherit; }
+.turbo-sse-plot nav button { height: 24px; padding: 0 6px; color: inherit; background: none; border: 0; box-shadow: none; font-size: 17px; }
+.turbo-sse-plot:not([data-max]) nav { display: none; }
+.turbo-sse-plot[data-max] > header > span { margin-left: 14px; }
 /* An enlarged plot fills the window below the topbar; the script sets its top edge. Its plot area takes the
    spare height, the page behind it does not scroll, and the other plots cannot be reached. */
 .turbo-sse-plot[data-max] { position: fixed; inset: 0; z-index: 999; display: flex; flex-direction: column; overflow: auto; }
 .turbo-sse-plot[data-max] > .turbo-sse-area { flex: 1 0 200px; }
 :root:has(.turbo-sse-plot[data-max]) { overflow: hidden; }
 :root:has(.turbo-sse-plot[data-max]) .turbo-sse-plot:not([data-max]) { visibility: hidden; }
-/* The script reserves a one-row band above the data for this bar, so it never covers data. The script also
-   moves its left edge to the plot area's, leaving the y-axis label visible. The key legend shows as much as fits
-   and fades out where it is cut off; hovering it shows a full copy over the plot and the toolbar.
-   A plot is inactive until clicked or focused; only an active plot shows the bar and takes the wheel. */
-.turbo-sse-tools { position: absolute; top: 3px; left: 66px; right: 3px; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 3px 6px; font-size: 11px; }
-.turbo-sse-tools > span { display: flex; flex: 1 1 0; min-width: 0; overflow: hidden; }
-.turbo-sse-tools > span > .turbo-sse-hint { flex: none; flex-wrap: nowrap; }
-.turbo-sse-tools > [data-more] { mask-image: linear-gradient(to right, #000 calc(100% - 48px), #0000); }
-.turbo-sse-tools > [data-more]:hover { mask-image: none; }
-.turbo-sse-tools > span > .turbo-sse-hint + .turbo-sse-hint { position: absolute; top: 0; left: 0; z-index: 1; max-width: 100%; flex-wrap: wrap; border-color: #5e5e5e; }
-.turbo-sse-tools > span:not([data-more]:hover) > .turbo-sse-hint + .turbo-sse-hint { display: none; }
-.turbo-sse-tools > [role] { display: flex; flex: none; margin-left: auto; }
+/* The script reserves a band above the data for the controls, so they never cover data, and moves its left edge
+   to the plot area's. A plot is inactive until clicked or focused; only an active plot shows its controls and
+   takes the wheel. */
+.turbo-sse-tools { position: absolute; top: 4px; left: 66px; right: 6px; z-index: 1; display: flex; justify-content: flex-end; }
+.turbo-sse-tools > div { display: flex; gap: 4px; }
 .turbo-sse-plot:not([data-active]) .turbo-sse-tools { visibility: hidden; }
-.turbo-sse-plot:not([data-active]):hover .turbo-sse-tools::before { content: "Click to interact"; position: absolute; top: 0; left: 0; color: #ff7a00; visibility: visible; }
-.turbo-sse-hint { display: flex; flex-wrap: wrap; gap: 1px 10px; }
-.turbo-sse-hint, .turbo-sse-tools::before { padding: 1px 5px; background: #000; border: 1px solid #000; pointer-events: none; }
-.turbo-sse-tools > [role] kbd { margin-left: 4px; pointer-events: none; }
-.turbo-sse-area { position: relative; height: var(--turbo-sse-height, 220px); overflow: hidden; color: #969696; }
+@container (max-width: 470px) { .turbo-sse-tools button > span, .turbo-sse-tools kbd { display: none; } .turbo-sse-tools button { padding-inline: 6px; } }
+.turbo-sse-area { position: relative; height: var(--turbo-sse-height, 220px); overflow: hidden; color: #8f8f8f; }
 .turbo-sse-area canvas { display: block; width: 100%; height: 100%; outline: 0; }
 .turbo-sse-plot[data-active] canvas { touch-action: none; cursor: crosshair; }
-.turbo-sse-cursor { position: absolute; border-left: 1px solid #fff; pointer-events: none; }
-.turbo-sse-cross-y { position: absolute; border-top: 1px dotted #fff; pointer-events: none; }
+/* The crosshair: a white line with its time in a chip on the time axis, a dotted line with its value in a chip
+   on the value axis, and a ring on each curve at the nearest sample. */
+.turbo-sse-cursor, .turbo-sse-cross-y, .turbo-sse-ring { position: absolute; pointer-events: none; }
+.turbo-sse-cursor { border-left: 1px solid #fff; }
+.turbo-sse-cross-y { border-top: 1px dotted #fff; }
+.turbo-sse-cursor::after, .turbo-sse-cross-y::before { position: absolute; padding: 2px 5px; color: #000; background: #fff; font-size: 10px; line-height: 12px; white-space: nowrap; }
+.turbo-sse-cursor::after { content: attr(data-t); top: calc(100% + 3px); left: var(--shift, 0px); transform: translateX(-50%); }
+.turbo-sse-cross-y::before { content: attr(data-v); right: calc(100% + 1px); top: -8px; }
+.turbo-sse-ring { width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; background: #000; border: 2px solid var(--series-color); border-radius: 50%; }
 /* A/B measurement: orange band with solid marker lines. Zoom selection: striped band with dashed edges. */
 .turbo-sse-selection { position: absolute; background: linear-gradient(#ff7a0055, #ff7a001a); border: solid #ff7a00; border-width: 0 1px; pointer-events: none; }
 .turbo-sse-selection[data-zoom] { background: repeating-linear-gradient(135deg, #fff3 0 1px, #0000 1px 5px); border-color: #fff; border-style: dashed; }
-.turbo-sse-legend { display: flex; flex-wrap: wrap; gap: 0 14px; padding: 2px 6px; border-top: 1px solid #383838; }
-.turbo-sse-legend > * { padding: 1px 0; max-width: 100%; overflow-wrap: anywhere; cursor: pointer; }
-.turbo-sse-legend > ::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 5px; background: var(--series-color); border: 1px solid var(--series-color); vertical-align: -1px; }
-.turbo-sse-legend > :hover { color: #fff; }
-.turbo-sse-legend [aria-pressed=false], .turbo-sse-legend [aria-pressed=false] > * { color: #5e5e5e; }
-.turbo-sse-legend [aria-pressed=false]::before { background: none; }
-.turbo-sse-series-name { margin-right: 2px; }
-.turbo-sse-series-value { font-size: 13px; }
-/* Readout and measurement lines stay one line tall, so their changing text never shifts the page.
-   The measurement table scrolls sideways when a narrow plot cannot fit it. */
-.turbo-sse-readout, .turbo-sse-measure p { overflow: hidden; margin: 0; padding: 2px 6px; border-top: 1px solid #383838; white-space: nowrap; text-overflow: ellipsis; }
-.turbo-sse-measure p { color: #fff; background: #1c1c1c; }
-.turbo-sse-measure { overflow-x: auto; }
-.turbo-sse-measure table { margin: 0; border-style: hidden; white-space: nowrap; }
-.turbo-sse-measure table + table { border-top: 1px solid #383838; }
-/* A narrow plot sets its measurement tables tighter, so that they still fit. A narrower one also drops the key
-   glyphs from its buttons, so that they stay on one row. */
-@container (max-width: 560px) { .turbo-sse-measure table { font-size: 11px; } .turbo-sse-measure :is(th, td) { padding-inline: 6px 2px; } }
-@container (max-width: 440px) { .turbo-sse-tools [role] kbd { display: none; } .turbo-sse-tools :is(button, label) { margin-left: 2px; padding-inline: 4px; } }
-/* Touch screens show no keys and get taller controls. */
-@media (hover: none) { .turbo-sse-tools > span, .turbo-sse-tools [role] kbd { display: none; } button, .turbo-sse-plot label { padding-block: 6px; } }
+/* Series tiles, as in a camera's function menu: a numbered badge and the name over the value, between thin
+   rules. A series reached by a jump is the selected tile. */
+.turbo-sse-legend { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); background: #0b0b0b; border-top: 1px solid #333; }
+.turbo-sse-legend > * { min-width: 0; margin-bottom: -1px; padding: 7px 12px 8px 10px; border: solid #333; border-width: 0 1px 1px 0; overflow-wrap: anywhere; cursor: pointer; }
+/* Block layout keeps the name selectable in Chromium, which starts no selection inside this flex box. */
+.turbo-sse-series-name { display: block; color: #8f8f8f; font-size: 11.5px; line-height: 15px; }
+.turbo-sse-legend > :hover .turbo-sse-series-name { color: #fff; }
+.turbo-sse-legend b { display: block; margin-top: 4px; font-size: 21px; line-height: 1; }
+.turbo-sse-legend small { color: #8f8f8f; font-size: 13px; }
+.turbo-sse-plot[data-max] .turbo-sse-legend b { font-size: 28px; }
+.turbo-sse-legend [data-summary] b { font-size: 13px; line-height: 1.3; }
+.turbo-sse-legend [data-lane] b { display: table; padding: 2px 6px 1px; font-size: 15px; background: linear-gradient(#000c, #000b) var(--value-color, var(--series-color)); border: 1px solid var(--value-color, var(--series-color)); border-radius: 2px; }
+.turbo-sse-legend [aria-pressed=false] :is(.turbo-sse-series-name, b, small) { color: #5e5e5e; }
+.turbo-sse-legend [aria-pressed=false] [data-n]::before { color: var(--series-color); background: none; }
+.turbo-sse-legend [data-selected] { background: var(--turbo-sse-select); box-shadow: inset 0 1px 0 #ffffff59; text-shadow: 0 1px 0 #0005; }
+.turbo-sse-legend [data-selected] :is(.turbo-sse-series-name, small) { color: #fff; }
+/* Series badges are boxed glyphs in the series color, glossed like the classic menu's tabs. */
+[data-n]::before { content: attr(data-n); display: inline-grid; place-items: center; flex: none; min-width: 15px; height: 15px; margin-right: 6px; padding: 0 2px; color: #000; background: linear-gradient(#fff8, #fff0 55%, #0002) var(--series-color); border-radius: 2px; box-shadow: inset 0 0 0 1px #0006; font-size: 10px; line-height: 1; text-shadow: none; vertical-align: -3px; }
+.turbo-sse-menu li::before { margin-right: 0; }
+/* The information line: a LIVE or HOLD chip, then each value after its small label. It stays one line tall, so
+   its changing text never shifts the page. */
+.turbo-sse-readout { overflow: hidden; min-height: 26px; margin: 0; padding: 5px 10px 4px; color: #8f8f8f; border-top: 1px solid #262626; font-size: 12px; white-space: nowrap; text-overflow: ellipsis; }
+.turbo-sse-readout b { color: #fff; font-weight: 400; }
+.turbo-sse-readout > * + * { margin-left: 8px; }
+.turbo-sse-chip { padding: 3px 5px 2px; color: #000; background: linear-gradient(#fff8, #fff0 55%, #0002) #34d058; border-radius: 2px; box-shadow: inset 0 0 0 1px #0004; font-size: 10px; letter-spacing: .09em; text-transform: uppercase; }
+.turbo-sse-chip[data-hold] { color: #fff; background: none; box-shadow: inset 0 0 0 1px #fff; }
+/* Guide and measurement share one grid cell, so the panel keeps its height and measuring never moves the page.
+   The guide is a camera's bottom line: a key glyph, then the word for what it does. */
+.turbo-sse-measure { display: grid; border-top: 1px solid #262626; }
+.turbo-sse-measure > * { grid-area: 1 / 1; min-width: 0; overflow-x: auto; }
+.turbo-sse-measure[data-idle] > div:last-child, .turbo-sse-measure:not([data-idle]) > .turbo-sse-guide { visibility: hidden; }
+.turbo-sse-guide { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); align-content: start; gap: 8px 18px; padding: 10px 12px; font-size: 12px; }
+.turbo-sse-guide::before { content: "Keys"; grid-column: 1 / -1; color: #ff7a00; font: 700 11px/1 var(--turbo-sse-cond); font-stretch: condensed; letter-spacing: .1em; text-transform: uppercase; }
+/* The build's minifier removes spaces after commas, also inside strings, so the comma and its space are escaped. */
+.turbo-sse-plot:not([data-active]) .turbo-sse-guide::before { content: "Click the plot to pan\2c\20 zoom and measure"; color: #fff; }
+.turbo-sse-plot:not([data-active]) .turbo-sse-guide > * { opacity: .45; }
+.turbo-sse-guide > span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.turbo-sse-guide b { padding: 0 6px; color: #000; background: linear-gradient(#fbfbfb, #b6b6b6); border-radius: 9px; font-size: 10px; line-height: 18px; letter-spacing: .05em; text-transform: uppercase; }
+.turbo-sse-guide [data-touch], .turbo-sse-plot:not([data-max]) [data-big] { display: none; }
+.turbo-sse-guide i { margin-left: 8px; }
+.turbo-sse-measure p { display: flex; gap: 20px; overflow: hidden; padding: 8px 10px 7px; font-size: 17px; line-height: 1; white-space: nowrap; background: #111; border-bottom: 1px solid #262626; }
+.turbo-sse-measure p > span { display: inline-flex; align-items: baseline; gap: 6px; }
+.turbo-sse-measure p small { color: #8f8f8f; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
+.turbo-sse-measure p > :nth-child(-n+2) small { color: #ff7a00; }
+.turbo-sse-measure p > :nth-child(n+3) small { letter-spacing: .04em; text-transform: none; }
+.turbo-sse-measure table { margin: 0; font-size: 12px; white-space: nowrap; }
+.turbo-sse-measure table + table { border-top: 1px solid #262626; }
+.turbo-sse-measure :is(th, td) { padding: 4px 9px; text-align: right; border-bottom: 0; border-top: 1px solid #1d1d1d; }
+.turbo-sse-measure thead th { padding-block: 7px 4px; border-top: 0; }
+.turbo-sse-measure :is(thead th:first-child, tbody th) { width: auto; text-align: left; }
+/* A narrow plot sets its measurement tables tighter, so that they still fit. */
+@container (max-width: 560px) { .turbo-sse-measure table { font-size: 11px; } .turbo-sse-measure :is(th, td) { padding-inline: 4px; } .turbo-sse-measure :is(thead th:first-child, tbody th) { padding-left: 9px; } }
+/* Touch screens show gestures instead of keys and get taller controls. */
+@media (hover: none) {
+  .turbo-sse-guide > span:not([data-touch]), .turbo-sse-tools kbd, .turbo-sse-menu p > :not(:first-child) { display: none; }
+  .turbo-sse-guide > [data-touch] { display: inline-flex; }
+  .turbo-sse-guide::before { content: "Touch"; }
+  .turbo-sse-plot:not([data-active]) .turbo-sse-guide::before { content: "Tap the plot to pan\2c\20 zoom and measure"; }
+  button, .turbo-sse-plot label { height: 32px; padding-inline: 10px; }
+}
 /* Last, so it overrides the page and topbar padding above. */
-@media (max-width: 600px) { main { padding: 4px 6px 12px; } .turbo-sse-bar { padding-inline: 6px; } h1 { font-size: 20px; } }
+@media (max-width: 600px) { main { padding: 10px 8px 12px; } .turbo-sse-bar { padding-inline: 8px; } h1 { font-size: 23px; } }
