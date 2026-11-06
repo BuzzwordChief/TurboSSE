@@ -338,7 +338,7 @@
       this.host = host; this.sources = sources; this.view = view; this.hooks = hooks;
       this.min = option(host, "y-min", null); this.max = option(host, "y-max", null);
       if (this.min !== null && this.max !== null && this.min >= this.max) throw new Error("Graph y-min must be below y-max");
-      this.hidden = new Set(); this.top = 24; this.left = 64; this.width = this.height = this.span = 1;
+      this.hidden = new Set(); this.top = 24; this.left = 64; this.width = this.height = this.span = 1; this.pointer = null;
       this.lanes = sources.filter(c => c.lane); this.series = sources.filter(c => !c.lane);
       this.abort = new AbortController();
       const listen = (node, name, fn, opts = {}) => node.addEventListener(name, fn, {...opts, signal: this.abort.signal});
@@ -462,7 +462,7 @@
         hooks.invalidate();
       });
       listen(this.canvas, "pointercancel", () => { this.cancel(); });
-      listen(this.canvas, "pointerleave", () => { if (!this.drag) { view.cursor = this.cursorY = this.lane = null; hooks.cursor(view); } });
+      listen(this.canvas, "pointerleave", () => { if (!this.drag) { view.cursor = this.cursorY = this.lane = this.pointer = null; hooks.cursor(view); } });
       listen(document, "keydown", event => {
         if (!this.active || event.ctrlKey || event.metaKey || event.altKey) return;
         const key = event.key.toLowerCase(), span = view.hi - view.lo, center = view.cursor === null ? (view.lo + view.hi) / 2 : view.cursor;
@@ -519,18 +519,20 @@
       this.hooks.invalidate();
     }
     track(event) {
-      // Remember the pointer's time, its y position over the numeric area, and the lane under it.
-      const y = event.clientY - this.canvas.getBoundingClientRect().top, bottom = this.top + this.height;
+      // Remember the pointer's position on the canvas, its y position over the numeric area, and the lane under it.
+      const rect = this.canvas.getBoundingClientRect(), y = event.clientY - rect.top, bottom = this.top + this.height;
       this.cursorY = this.series.length && y <= bottom ? Math.max(this.top, y) : null;
       this.lane = this.lanes[Math.floor((y - bottom) / LANE)];
-      return this.view.cursor = this.time(event);
+      this.pointer = event.clientX - rect.left;
+      return this.view.cursor = this.at(this.pointer);
     }
     snap(t) {
       // A marker placed over a lane sticks to that lane's nearest change within 5 px.
       const p = this.lane && this.lane.history.nearest(t);
       return p && !p.summary && Math.abs(this.x(p.a[0]) - this.x(t)) <= 5 ? p.a[0] : t;
     }
-    time(event) { const rect = this.canvas.getBoundingClientRect(); return this.view.lo + Math.max(0, Math.min(this.width, event.clientX - rect.left - this.left)) / this.width * (this.view.hi - this.view.lo); }
+    time(event) { return this.at(event.clientX - this.canvas.getBoundingClientRect().left); }
+    at(x) { return this.view.lo + Math.max(0, Math.min(this.width, x - this.left)) / this.width * (this.view.hi - this.view.lo); }
     x(t) { return this.left + (t - this.view.lo) / (this.view.hi - this.view.lo) * this.width; }
     value(y) { const f = Math.max(0, Math.min(1, (y - this.top) / this.height)); return this.yMax * (1 - f) + this.yMin * f; }
     band(a, b, zoom) {
@@ -937,6 +939,8 @@
           if (g.live) { const end = Math.max(r[1], (performance.now() - started) / 1000); g.lo = Math.max(r[0], end - g.window); g.hi = Math.max(g.lo + .001, end); }
           else if (g.hi < r[0]) { const span = g.hi - g.lo; g.lo = r[0]; g.hi = Math.max(g.lo + .001, Math.min(r[1], g.lo + span)); g.cursor = null; }
         }
+        // A resting pointer keeps its crosshair under it while the view follows new data, pans or zooms.
+        for (const p of plots.values()) if (p.pointer != null) p.view.cursor = p.at(p.pointer);
         for (const g of groups.values()) g.gutter = 0;
         for (const p of plots.values()) p.view.gutter = Math.max(p.view.gutter, p.need);
         for (const p of plots.values()) {
@@ -958,8 +962,9 @@
       if (omitted.has(event.type)) counts.omitted++;
       else if (!capture.push(record, () => counts.evicted++)) counts.oversized++;
       if (event.type === uptimeEvent) {
-        const value = numeric(event.data);
-        if (!Number.isFinite(value) || value < 0) counts.clockErrors++;
+        // The device reports its uptime as an unsigned integer of microseconds; estimates are kept in seconds.
+        const text = event.data.trim(), value = /^\d+$/.test(text) ? Number(text) / 1e6 : NaN;
+        if (!Number.isFinite(value)) counts.clockErrors++;
         else {
           if (clock.compare && clock.value !== null && value < clock.value) {
             clock.segment++;

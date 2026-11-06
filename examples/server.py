@@ -128,7 +128,7 @@ class Handler(BaseHTTPRequestHandler):
                     device.stopped.wait(0.1)
                     continue
                 if tick % max(1, round(device.rate)) == 0:
-                    send("uptime", "{:.3f}".format(uptime))
+                    send("uptime", str(int(uptime * 1000000)))
                 temperature = 23.6 + 2 * math.sin(uptime / 8)
                 send("temperature", "{:.2f}".format(temperature))
                 # Discrete signals: the controller state follows the speed cycle, the status register steps

@@ -94,7 +94,7 @@ class SoakHandler(BaseHTTPRequestHandler):
             try:
                 while not server.stop.is_set() and time.monotonic() - server.started < server.args.seconds:
                     if tick % max(1, server.args.rate) == 0:
-                        self.wfile.write(('event: uptime\ndata: {:.6f}\n\n'.format(time.monotonic()-server.started)).encode());server.sent += 1
+                        self.wfile.write(('event: uptime\ndata: {}\n\n'.format(int((time.monotonic()-server.started)*1000000))).encode());server.sent += 1
                     values = {"v"+str(i): round(math.sin(tick/server.args.rate*(i+1)/4)+i/10+(10 if tick%10003==177 else 0),8) for i in range(server.args.channels)}
                     self.wfile.write(('id: sample:{}\nevent: measure\ndata: {}\n\n'.format(tick,json.dumps(values,separators=(',',':')))).encode())
                     self.wfile.flush();server.sent+=1;server.samples+=1;tick+=1

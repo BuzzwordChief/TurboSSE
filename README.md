@@ -157,7 +157,7 @@ On touch screens an inactive plot lets the page scroll, the first tap activates 
 - **Live and Fit.** The Live switch and the lamp in each plot's header are lit green while the plot follows new data, so a held plot stands out even when its controls are hidden. While Live is checked, the wheel only changes the followed window, so zooming keeps tracking new data. Panning or range zoom unchecks Live, and checking it again keeps the current span. Fit is a one-time action that leaves Live as it is; while Live is checked, the followed window then covers all history as data arrives.
 - **Enlarge.** Enlarge is in the control band, so it shows for the active plot only. Pressing the active plot's header does the same, like entering a selected menu row; the pointer turns into a magnifier there. The plot then fills the window below the topbar, with the spare height going to the plot area, and the button reads Reduce. Enlarging adds a browser history entry, so the browser's Back button returns to the page instead of leaving it, and Forward enlarges the plot again; Reduce, the header, <kbd>E</kbd> and <kbd>Esc</kbd> go back the same way. The enlarged plot stays active, the page behind keeps its scroll position, the other plots stop drawing until you return, and a plot of lanes only keeps the height of its lanes.
 - **Focus.** Shortcuts work while a plot is active, wherever focus is inside it; combinations with Ctrl, Cmd or Alt are left to the browser. Clicking a toolbar control keeps the plot active and returns focus to it, while a control activated from the keyboard keeps focus.
-- **Reading values.** Hovering shows a crosshair; the readout row gives the elapsed time, the y value under the pointer, the nearest sample and its estimated uptime. Y tick labels read bottom to top, so the y axis needs only one line of text; long labels get fewer ticks.
+- **Reading values.** Hovering shows a crosshair that stays under a resting pointer while a live plot moves; the readout row gives the elapsed time, the y value under the pointer, the nearest sample and its estimated uptime. Y tick labels read bottom to top, so the y axis needs only one line of text; long labels get fewer ticks.
 - **Legend.** Legend entries brighten under the pointer. A hidden series keeps an outlined swatch and keeps recording. Legend, readout and measurement text can be selected and copied; selecting legend text does not toggle the series.
 
 ### Measurements
@@ -202,7 +202,7 @@ Bindings with the same event, selector, transform and unit share one history and
 | `data-sse-buffer-events` | Maximum retained raw events | `10000` |
 | `data-sse-buffer-bytes` | Raw capture string-storage budget | `2097152` |
 | `data-sse-omit-raw` | Event names to leave out of raw capture only | Empty: omit nothing |
-| `data-sse-uptime-event` | Event carrying the device uptime in seconds | `uptime` |
+| `data-sse-uptime-event` | Event carrying the device uptime in microseconds | `uptime` |
 | `data-sse-graph-bytes` | Graph history budget; minimum 8192 | `33554432` (32 MiB) |
 | `data-sse-graph` | Plot a binding, or overlay the series inside the element | Absent |
 | `data-sse-discrete` | Draw the series as a lane: `bus`, or `logic` for a two-level signal | Absent: numeric curve |
@@ -257,11 +257,11 @@ Native reconnects send `Last-Event-ID`. Watchdog and manual reconnects pass the 
 
 ```text
 event: uptime
-data: 1234.567
+data: 1234567000
 
 ```
 
-The payload is a finite, non-negative number of seconds; no JSON, boot ID or per-sample timestamp is needed. One report starts the estimate and periodic reports correct it; send one on each connection if reconnect synchronization matters. Invalid reports keep the previous estimate and count a Clock error.
+The payload is an unsigned decimal integer of microseconds, without sign, decimal point or exponent; no JSON, boot ID or per-sample timestamp is needed. Displays, exports and `stats()` show the uptime in seconds. One report starts the estimate and periodic reports correct it; send one on each connection if reconnect synchronization matters. Invalid reports keep the previous estimate and count a Clock error.
 
 The topbar shows `Uptime ≈HH:MM:SS`, advancing once a second from the last report. It shows unknown time before the first report and after a disconnect until a new report arrives. Samples keep the uptime estimated when they arrived.
 
@@ -380,7 +380,7 @@ TurboSSE.destroy();    // Close the stream, cancel work, release data, remove ge
 
 `init(rootElement)` selects the root explicitly. `refresh()` preserves unchanged append bindings, shared graph histories, inspection state and existing subscriptions. Label changes keep graph data; changing a graph source or its transform resets that source, and removing one plot keeps a source still used by another.
 
-`stats()` returns a copy with `received`, `retained`, `bytes`, `evicted`, `oversized`, `parseErrors`, `transformErrors`, `configErrors`, `appendDrops`, `state`, `lastEventId`, `omitted`, `clockErrors`, `restarts`, `graphErrors`, `markerEvictions`, the estimated `uptime` (or `null`), `lastUptime`, `segment` and `graphs`. `graphs` holds the accounted `bytes`, the plot count, and a series list with `id,label,event,raw,compacted,evicted,bytes,samples,gaps,from,to`, where coverage is in browser elapsed seconds. `samples` counts retained measurements including those inside summaries, `raw` counts exact records including gaps, `compacted` counts records turned into summaries, and `evicted` counts expired records. Counters are cumulative since initialization.
+`stats()` returns a copy with `received`, `retained`, `bytes`, `evicted`, `oversized`, `parseErrors`, `transformErrors`, `configErrors`, `appendDrops`, `state`, `lastEventId`, `omitted`, `clockErrors`, `restarts`, `graphErrors`, `markerEvictions`, the estimated `uptime` in seconds (or `null`), the last reported `lastUptime` in seconds, `segment` and `graphs`. `graphs` holds the accounted `bytes`, the plot count, and a series list with `id,label,event,raw,compacted,evicted,bytes,samples,gaps,from,to`, where coverage is in browser elapsed seconds. `samples` counts retained measurements including those inside summaries, `raw` counts exact records including gaps, `compacted` counts records turned into summaries, and `evicted` counts expired records. Counters are cumulative since initialization.
 
 After `destroy()`, `stats()` returns `null` and a later `init()` starts a fresh session. Values already rendered into the page stay.
 

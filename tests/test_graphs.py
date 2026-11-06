@@ -89,7 +89,7 @@ class GraphCases:
     def test_omission_does_not_affect_graphs_uptime_or_failed_payloads(self):
         self.open('<div data-sse-graph data-sse-event="v" data-sse-json="/x"></div>',
                   'data-sse-omit-raw="v uptime"')
-        self.case.emit('uptime', '50')
+        self.case.emit('uptime', '50000000')
         self.case.emit('v', '{"x":5}')
         self.case.emit('v', '{broken')
         self.received(3)
@@ -620,6 +620,32 @@ class GraphCases:
         self.page.mouse.up(button='right')
         expect(self.page.locator('#a .turbo-sse-selection')).to_be_hidden()
 
+    def test_crosshair_stays_under_resting_pointer_while_live(self):
+        self.open('<div id="a" data-sse-graph data-sse-event="v"></div>')
+        for i in range(6):
+            self.case.emit('v', str(i)); self.page.wait_for_timeout(15)
+        self.received(6)
+        box = self.page.locator('#a canvas').bounding_box()
+        x = box['x'] + box['width'] * .6
+        self.page.mouse.move(x, box['y'] + box['height'] / 2)
+        cursor, readout = self.page.locator('#a .turbo-sse-cursor'), self.page.locator('#a .turbo-sse-readout')
+        expect(cursor).to_be_visible(); self.frames()
+        elapsed = lambda: float(re.search(r'Elapsed ([-\d.e+]+) s', readout.inner_text()).group(1))
+        before = elapsed()
+        # The live view moves under the resting pointer: the crosshair stays put and reads a later time.
+        for i in range(4):
+            self.page.wait_for_timeout(150); self.case.emit('v', str(i))
+        self.received(10); self.frames()
+        self.assertAlmostEqual(cursor.bounding_box()['x'], x, delta=1)
+        self.assertGreater(elapsed(), before)
+        # Keyboard panning while paused also keeps the crosshair under the pointer.
+        self.page.mouse.click(x, box['y'] + box['height'] / 2); self.page.keyboard.press('l')
+        expect(self.page.locator('#a [data-action="Live"]')).not_to_be_checked()
+        self.page.keyboard.press('+'); self.frames(); before = elapsed()
+        self.page.keyboard.press('ArrowLeft'); self.frames()
+        self.assertAlmostEqual(cursor.bounding_box()['x'], x, delta=1)
+        self.assertLess(elapsed(), before)
+
     def pointer_y(self):
         self.frames()
         text = self.page.locator('#a .turbo-sse-readout').inner_text()
@@ -661,10 +687,10 @@ class GraphCases:
 
     def test_restart_rows_and_unsynchronized_times(self):
         self.open('<div data-sse-graph data-sse-event="v"></div>')
-        self.case.emit('v', '1'); self.case.emit('uptime', '100'); self.case.emit('v', '2')
+        self.case.emit('v', '1'); self.case.emit('uptime', '100000000'); self.case.emit('v', '2')
         self.received(3)
         self.case.disconnect(); self.wait_requests(2); self.text('.turbo-sse-status', 'Connected')
-        self.case.emit('v', '3'); self.case.emit('uptime', '2'); self.case.emit('v', '4')
+        self.case.emit('v', '3'); self.case.emit('uptime', '2000000'); self.case.emit('v', '4')
         self.received(6)
         rows = self.export_files()['s01-v.csv']
         points = [r for r in rows if r['kind'] == 'sample']
@@ -764,7 +790,7 @@ class GraphCases:
     def test_source_asset_graphs_and_uptime_boot_without_build(self):
         self.case,url=self.server.add('<div data-sse-graph data-sse-event="v"></div>',asset='src/turbo-sse.js')
         self.page.goto(url);self.text('.turbo-sse-status','Connected')
-        self.case.emit('uptime','123.5');self.case.emit('v','2.5');self.received(2)
+        self.case.emit('uptime','123500000');self.case.emit('v','2.5');self.received(2)
         self.assertGreaterEqual(self.stats()['uptime'],123.5)
         self.assertEqual(self.export_files()['s01-v.csv'][0]['value'],'2.5')
 
