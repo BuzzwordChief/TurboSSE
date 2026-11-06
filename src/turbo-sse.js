@@ -286,9 +286,13 @@
   // Red and orange are left to restart markers and the selection.
   const palette = ["#fcd936", "#46d8fc", "#f85fbd", "#55cd7a", "#749ff9", "#995df7"];
   const tint = c => palette[(c.id - 1) % palette.length];
-  // The canvas uses the interface's condensed face. WebKit's canvas ignores the condensed width, so the macOS
-  // face is also named directly.
-  const SMALL = 'bold condensed 10px "HelveticaNeue-CondensedBold", "Helvetica Neue", Bahnschrift, "Roboto Condensed", "Arial Narrow", sans-serif', LARGE = SMALL.replace(10, 11);
+  // The canvas uses the interface's monospaced face. Text is centered on its capitals: mid is where the middle of a
+  // capital letter goes. Centered text is placed by its ink, which engines position differently from its advance.
+  const SMALL = 'bold 10px ui-monospace, "Cascadia Mono", Menlo, Consolas, "Roboto Mono", "DejaVu Sans Mono", monospace', LARGE = SMALL.replace(10, 11);
+  const centered = (ctx, text, x, mid) => {
+    const ink = ctx.textAlign == "center" ? ctx.measureText(text) : null;
+    ctx.fillText(text, ink ? x - (ink.actualBoundingBoxRight - ink.actualBoundingBoxLeft) / 2 : x, mid + ctx.measureText("H").actualBoundingBoxAscent / 2);
+  };
   const format = value => {
     if (!Number.isFinite(value)) return "—";
     const magnitude = Math.abs(value);
@@ -600,6 +604,10 @@
         if (tile.unit) put(tile.unit, text === "—" ? "" : " " + c.unit);
         tile.toggleAttribute("data-summary", !!(a && point.summary));
       });
+      for (const tile of this.tiles) {
+        const length = tile.value.textContent.length;
+        if (length > (tile.longest || 0)) { tile.style.minWidth = ""; const width = tile.getBoundingClientRect().width; if (width) { tile.longest = length; tile.style.minWidth = Math.ceil(width) + "px"; } }
+      }
       // The information line: a LIVE or HOLD chip, then each value after its small label.
       let html = this.baseReadout || "Waiting for data";
       if (t !== null) {
@@ -639,12 +647,12 @@
       this.width = Math.max(1, w - L - 16);
       const band = L + 2 + "px"; if (this.tools.style.left !== band) this.tools.style.left = band;
       // Y labels read across, as on a camera's scales; the gutter grows to the longest one on the next frame.
-      ctx.textAlign = "right"; ctx.textBaseline = "middle";
+      ctx.textAlign = "right";
       const yTicks = this.series.length ? ticks(this.yMin, this.yMax, Math.max(2, Math.min(6, this.height / 30))).map(v => [Math.round(y(v)) + .5, format(v)]) : [];
       // The gutter only grows, so changing labels never shift the plot sideways.
       this.need = Math.max(this.need, ...yTicks.map(t => Math.ceil(ctx.measureText(t[1]).width / 4) * 4 + 12));
-      for (const [p, label] of yTicks) { rule(L, p, end, p, true); rule(L - 4, p, L, p); ctx.fillText(label, L - 6, Math.min(Y - 5, Math.max(T + 5, p))); }
-      ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+      for (const [p, label] of yTicks) { rule(L, p, end, p, true); rule(L - 4, p, L, p); centered(ctx, label, L - 6, Math.min(Y - 5, Math.max(T + 5, p))); }
+      ctx.textAlign = "center";
       const title = "Elapsed time (s)", room = end - ctx.measureText(title).width - 8;
       for (const v of ticks(g.lo, g.hi, Math.max(2, this.width / 90))) {
         const p = Math.round(this.x(v)) + .5, label = format(v); rule(p, T, p, B, true); rule(p, B, p, B + 4);
@@ -678,11 +686,11 @@
       ctx.restore();
       // Lanes: bus lanes draw labelled segments with slanted ends at each change; logic lanes draw a high/low line.
       // Changes too close together to draw show as a gray block with their count.
-      ctx.save(); ctx.lineWidth = 1; ctx.textBaseline = "middle";
+      ctx.save(); ctx.lineWidth = 1;
       this.lanes.forEach((c, i) => {
         const top = Y + i * LANE + 2, mid = top + 8, bottom = top + 16, color = tint(c);
         ctx.font = SMALL; ctx.textAlign = "right"; ctx.fillStyle = ctx.strokeStyle = ink;
-        ctx.fillText(clip(ctx, c.label, L - 10), L - 6, mid); rule(L, top - 1.5, end, top - 1.5, true);
+        centered(ctx, clip(ctx, c.label, L - 10), L - 6, mid); rule(L, top - 1.5, end, top - 1.5, true);
         if (this.hidden.has(c)) return;
         ctx.save(); ctx.beginPath(); ctx.rect(L + 1, top - 1, this.width, LANE - 2); ctx.clip();
         ctx.font = LARGE; ctx.textAlign = "center";
@@ -700,12 +708,12 @@
           const slant = Math.min(3, (x1 - x0) / 2), a = Math.max(x0, L), b = Math.min(x1, end), label = clip(ctx, text, b - a - 8);
           ctx.beginPath(); ctx.moveTo(x0, mid); ctx.lineTo(x0 + slant, top); ctx.lineTo(x1 - slant, top); ctx.lineTo(x1, mid); ctx.lineTo(x1 - slant, bottom); ctx.lineTo(x0 + slant, bottom); ctx.closePath();
           ctx.fillStyle = shade(c.slots[value], 1); ctx.fill(); ctx.strokeStyle = shade(c.slots[value]); ctx.stroke();
-          if (label) { ctx.fillStyle = "#fff"; ctx.fillText(label, (a + b) / 2, mid); }
+          if (label) { ctx.fillStyle = "#fff"; centered(ctx, label, (a + b) / 2, mid); }
         };
         const busy = (t0, t1, n, summary) => {
           const x0 = this.x(t0), x1 = Math.max(x0 + 2, this.x(t1)), label = clip(ctx, n + " changes" + (summary ? ", summarized" : ""), x1 - x0 - 8);
           ctx.fillStyle = "#383838"; ctx.strokeStyle = "#969696"; ctx.fillRect(x0, top, x1 - x0, 16); ctx.strokeRect(x0 + .5, top + .5, x1 - x0 - 1, 15);
-          if (label) { ctx.fillStyle = "#fff"; ctx.fillText(label, (x0 + x1) / 2, mid); }
+          if (label) { ctx.fillStyle = "#fff"; centered(ctx, label, (x0 + x1) / 2, mid); }
         };
         // The value in effect at the left edge comes from the last change before it.
         const p = c.history.nearest(g.lo, true);
@@ -725,12 +733,13 @@
       for (const marker of this.hooks.restarts()) if (marker.time >= g.lo && marker.time <= g.hi) {
         const x = this.x(marker.time); ctx.beginPath(); ctx.moveTo(x, T); ctx.lineTo(x, B); ctx.stroke(); ctx.fillText("≈ restart", x + 4, T + 12);
       }
-      // Each marker carries an orange flag with its letter at the top of its line.
+      // Each marker carries an orange flag with its letter at the top of its line, on the outer side of the interval,
+      // so the line never crosses the letter. A flag with no room there turns inward.
       ctx.setLineDash([]); ctx.font = SMALL; ctx.textAlign = "center";
-      if (!z) for (const [name, t] of [["A", g.a], ["B", g.b]]) if (t !== null) {
-        const x = Math.round(this.x(t)) + .5;
-        ctx.fillStyle = "#ff7a00"; ctx.beginPath(); ctx.moveTo(x - 7, T); ctx.lineTo(x + 7, T); ctx.lineTo(x + 7, T + 12); ctx.lineTo(x, T + 16); ctx.lineTo(x - 7, T + 12); ctx.fill();
-        ctx.fillStyle = "#000"; ctx.fillText(name, x, T + 10);
+      if (!z) for (const [name, t, other] of [["A", g.a, g.b], ["B", g.b, g.a]]) if (t !== null) {
+        const x = Math.round(this.x(t)), out = (other === null ? name == "B" : t > other) ? 1 : -1, side = x + out * 15 < L || x + out * 15 > end ? -out : out;
+        ctx.fillStyle = "#ff7a00"; ctx.fillRect(side < 0 ? x - 14 : x + 1, T, 14, 14);
+        ctx.fillStyle = "#000"; centered(ctx, name, x + side * 7.5 + .5, T + 7);
       }
       ctx.restore();
       if (!retained && !this.lanes.some(c => c.last >= 0)) { ctx.textAlign = "center"; ctx.fillStyle = ink; ctx.fillText("Waiting for valid data", L + this.width / 2, h / 2); }

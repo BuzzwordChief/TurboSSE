@@ -161,11 +161,11 @@ On touch screens an inactive plot lets the page scroll, the first tap activates 
 - **Enlarge.** Enlarge is in the control band, so it shows for the active plot only. Pressing the active plot's header does the same, like entering a selected menu row; the pointer turns into a magnifier there. The plot then fills the window below the topbar, with the spare height going to the plot area, and the button reads Reduce. Enlarging adds a browser history entry, so the browser's Back button returns to the page instead of leaving it, and Forward enlarges the plot again; Reduce, the header, <kbd>E</kbd> and <kbd>Esc</kbd> go back the same way. The enlarged plot stays active, the page behind keeps its scroll position, the other plots stop drawing until you return, and a plot of lanes only keeps the height of its lanes. The title bar shows ‹ 2/4 ›, the guide a square for each plot with the current one orange; ‹ and ›, or <kbd>[</kbd> and <kbd>]</kbd>, step to the neighbouring plot within the same history entry.
 - **Focus.** Shortcuts work while a plot is active, wherever focus is inside it; combinations with Ctrl, Cmd or Alt are left to the browser. Clicking a toolbar control keeps the plot active and returns focus to it, while a control activated from the keyboard keeps focus.
 - **Reading values.** Hovering shows a crosshair that stays under a resting pointer while a live plot moves. Its time sits in a chip on the time axis and its value in a chip on the value axis, and a ring marks each curve's nearest sample. The information line under the series tiles shows LIVE or HOLD, then the elapsed time, the y value, the nearest sample and its estimated uptime, each after its label. Y labels read across; the gutter widens to the longest one and never narrows again, so the plot does not shift sideways.
-- **Series tiles.** Each series has a tile with a numbered badge in its color, its name and its value: the newest at rest, the one under the crosshair while you inspect. The number is the series' export file number (`s01`, `s02`…). A hidden series dims its tile, outlines its badge and keeps recording. Tile, readout and measurement text can be selected and copied; selecting does not toggle the series.
+- **Series tiles.** Each series has a tile with a numbered badge in its color, its name and its value: the newest at rest, the one under the crosshair while you inspect. The number is the series' export file number (`s01`, `s02`…). A tile keeps the width of its longest value so far and never wraps it, so changing values do not move the page, also in the enlarged view. A hidden series dims its tile, outlines its badge and keeps recording. Tile, readout and measurement text can be selected and copied; selecting does not toggle the series.
 
 ### Measurements
 
-Measuring or placing a marker unchecks Live so the markers stay in view. The interval shows as an orange band, and each marker line carries an orange flag with its letter at the top; a range zoom in progress shows as a striped band with dashed edges.
+Measuring or placing a marker unchecks Live so the markers stay in view. The interval shows as an orange band, and each marker line carries an orange flag with its letter at the top, on the outer side of the interval so the line never crosses the letter; a range zoom in progress shows as a striped band with dashed edges.
 
 In place of the guide, an A/B line gives both marker times, Δt and 1/Δt. A table gives each series' count, minimum, maximum, peak-to-peak, mean, RMS, population standard deviation, Δy and slope, with numbers aligned right. The line and one row per series always keep their space, so measuring never moves the page; the table scrolls sideways on plots too narrow for it.
 
@@ -353,10 +353,10 @@ A summary describes several samples over an interval, and its mean is never expo
 - **Plot headers are title bars**, with a soft gray gloss, the title on the left and the unit at the right edge.
 - **The active plot wears the selection**: an orange frame and an orange header bar. Selected rows of the jump menu and a selected series tile take the menu's copper selection with white text.
 - **Values come after small labels**, as on the shooting screen, or under them in tiles between thin rules, as in the function menu.
-- **Buttons are keys, and key names are filled glyphs in capitals**, like the camera's MENU key. Each glyph is centered in its key by its ink, within half a pixel in Chromium, Firefox and WebKit; arrows, signs and brackets are lifted to get there. A test measures this from the rendered pixels.
+- **Buttons are keys, and key names are filled glyphs in sans capitals**, like the camera's printed MENU key. Each glyph is centered in its key by its ink, within half a pixel in Chromium, Firefox and WebKit; arrows, signs and brackets are lifted to get there. A test measures this from the rendered pixels. In the monospaced faces, browsers place capitals up to a pixel apart, so keys keep the sans face.
 - **Series badges are boxed numbers** in the series color, glossed like the menu's tabs.
 
-Titles, values and key labels use the condensed face each system already has: Helvetica Neue Condensed Bold on Apple devices, Bahnschrift on Windows, Roboto Condensed on Android, then Arial Narrow. Set `--turbo-sse-cond` to choose another. Labels and prose use Helvetica or Arial. The page is dark only, and nothing is downloaded.
+The interface, titles and tables use the monospaced face each system already has, so values line up and the page reads as an instrument: SF Mono in Safari, Menlo in other browsers on Apple devices, Cascadia Mono or Consolas on Windows, Roboto Mono or DejaVu Sans Mono elsewhere. Set `--turbo-sse-mono` to choose another. Prose uses Helvetica or Arial. Badges, lane values and canvas labels are centered on their capitals, and A/B flags on their letters' ink. The page is dark only, and nothing is downloaded.
 
 Each color has one meaning:
 
@@ -371,11 +371,11 @@ Round lamps, lit green, show which plots follow new data: one in each plot heade
 
 It is also a small classless stylesheet for the page around the plots:
 
-- `body` and `main` set the font, colors and a centered page up to 2560 px wide. Set `--turbo-sse-page-width` to change the width; the topbar keeps its full-width background and lines its content up with the page.
-- Each `<section>` directly inside `<main>` becomes a column of one grid. As many columns share a row as fit at 460 px or wider, and all columns are the same width, so the time axes of stacked plots line up. A few sections share the whole row; four form two rows of two until all four fit side by side, which they do on a 1920 px screen. Set `--turbo-sse-column` to change the least column width: a smaller value puts more plots in a row. Everything else in `<main>` takes a full-width row.
+- `body` and `main` set the font, colors and a centered page up to 1600 px wide. Set `--turbo-sse-page-width` to change the width; the topbar keeps its full-width background and lines its content up with the page.
+- Each `<section>` directly inside `<main>` becomes a column of one grid. Two columns share a row where both fit at 460 px or wider, and both are the same width, so the time axes of stacked plots line up; more sections continue in further rows, and a lone section takes the whole row. Set `--turbo-sse-column` to change the least column width. Everything else in `<main>` takes a full-width row.
 - A `<header>` directly inside `<main>` sets the `<h1>` title and a gray `<p>` tagline on one ruled line. `<h2>` is a smaller title.
 - `<h3>` and table `<caption>` are quiet titles over a soft rule; gloss belongs to the interface.
-- Tables collapse their borders and rule their rows. Header cells are gray labels and data cells are white; row headers in `tbody` size to their content, and cells use tabular figures. A row of one label and one value reads like a menu row: 30 px tall, the value on the right in the condensed face. `<hr>` is a gray rule.
+- Tables are quiet lists: as wide as their content, with a small capital caption, faint row rules, gray header cells, white data cells and tabular figures. A row of one label and one value keeps the value on the right. `<hr>` is a gray rule.
 - `<details>` is set off by a rule with a bold `<summary>`, and `<section>` blocks inside it get a border. `<pre>` wraps long lines and scrolls beyond 240 px.
 - `<kbd>` is a filled key glyph in capitals. `<footer>`, links, buttons, disabled buttons, focus rings and selected text get matching styles, and `[hidden]` always hides.
 
@@ -466,4 +466,4 @@ Publishing a GitHub Release attaches the same eight files to it; pushing a tag a
 
 ## Validation
 
-[VALIDATION.md](VALIDATION.md) records the test environment, numerical checks against reference statistics, live-run results, distribution sizes and the SHA-256 hashes of the tested build. The script and stylesheet total 27,427 bytes gzipped.
+[VALIDATION.md](VALIDATION.md) records the test environment, numerical checks against reference statistics, live-run results, distribution sizes and the SHA-256 hashes of the tested build. The script and stylesheet total 27,563 bytes gzipped.

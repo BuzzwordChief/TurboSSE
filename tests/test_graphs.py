@@ -344,6 +344,26 @@ class GraphCases:
         self.case.disconnect(); self.wait_requests(2); self.text('.turbo-sse-status', 'Connected')
         self.assertEqual(self.lane('State')['raw'], 4)
 
+    def test_tiles_keep_values_on_one_line_and_only_grow(self):
+        self.open('<div id="a" data-sse-graph><span data-sse-event="v" data-sse-unit="V"></span>'
+                  '<span data-sse-event="s" data-sse-discrete data-sse-label="State"></span></div>')
+        tile, value = self.page.locator('#a .turbo-sse-legend > *').nth(1), self.page.locator('#a [data-lane] b')
+        lines = 'e => { const r = document.createRange(); r.selectNodeContents(e); return r.getClientRects().length; }'
+        widths = []
+        for state in ['IDLE', 'RAMP DOWN SLOWLY', 'RUN']:
+            self.case.emit('v', '1'); self.case.emit('s', state)
+            expect(value).to_have_text(state); self.frames()
+            widths.append(tile.evaluate('e => e.getBoundingClientRect().width'))
+            self.assertEqual(value.evaluate(lines), 1, state)
+        # A tile keeps the width of its longest value, so its neighbours never move.
+        self.assertGreater(widths[1], widths[0]); self.assertEqual(widths[2], widths[1])
+        # The enlarged view's larger values stay on one line too.
+        box = self.page.locator('#a canvas').bounding_box()
+        self.page.mouse.click(box['x'] + 200, box['y'] + 100); self.page.keyboard.press('e')
+        expect(self.page.locator('#a .turbo-sse-plot')).to_have_attribute('data-max', '')
+        self.case.emit('s', 'RAMP DOWN SLOWLY'); expect(value).to_have_text('RAMP DOWN SLOWLY'); self.frames()
+        self.assertEqual(value.evaluate(lines), 1)
+
     def test_lane_values_get_distinct_colors(self):
         self.open('<div id="a" data-sse-graph data-sse-event="s" data-sse-discrete data-sse-label="First"></div>'
                   '<div id="b" data-sse-graph data-sse-event="t" data-sse-discrete data-sse-label="Second"></div>')

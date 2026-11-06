@@ -51,8 +51,9 @@ class DemoTests(unittest.TestCase):
                     expect(page.locator(".turbo-sse-status")).to_have_text("Connected")
                     expect(page.locator("#device-state")).to_have_text("Running")
                     layout = page.evaluate("""() => {
-                        const [left, right] = [...document.querySelectorAll("main > section")].map(s => s.getBoundingClientRect());
-                        return {sideBySide: Math.abs(left.top - right.top) < 1 && right.left > left.right, stacked: right.top >= left.bottom,
+                        const [left, right, third] = [...document.querySelectorAll("main > section")].map(s => s.getBoundingClientRect());
+                        return {sideBySide: Math.abs(left.top - right.top) < 1 && right.left > left.right, stacked: right.top >= left.bottom, newRow: third.top >= left.bottom,
+                                tableShare: document.querySelector("main > table").getBoundingClientRect().width / document.querySelector("main").clientWidth,
                                 overflow: document.documentElement.scrollWidth > innerWidth,
                                 table: getComputedStyle(document.querySelector("table")).borderCollapse,
                                 caption: getComputedStyle(document.querySelector("caption")).backgroundImage,
@@ -63,6 +64,10 @@ class DemoTests(unittest.TestCase):
                     self.assertEqual(layout["sideBySide"], columns == 2, (width, layout))
                     self.assertEqual(layout["stacked"], columns == 1, (width, layout))
                     self.assertFalse(layout["overflow"], width)
+                    # At most two plots share a row; a table is as wide as its content.
+                    self.assertTrue(layout["newRow"], (width, layout))
+                    if width > 1000:
+                        self.assertLess(layout["tableShare"], .5, (width, layout))
                     self.assertEqual(layout["table"], "collapse")
                     # Gloss belongs to the interface: page captions are quiet titles, plot headers title bars.
                     # A label-and-value table reads like a menu list, with its values on the right.
@@ -70,17 +75,17 @@ class DemoTests(unittest.TestCase):
                     self.assertTrue(layout["plotHeader"].startswith("linear-gradient"), layout)
                     self.assertEqual(layout["value"], "right")
                     self.assertEqual(layout["pre"], "pre-wrap")
-                    self.assertEqual(page.locator("main > table caption").inner_text(), "Real-time values")
-                    # The topbar content lines up with the page content, which is at most 2560 px wide.
+                    self.assertEqual(page.locator("main > table caption").text_content(), "Real-time values")
+                    # The topbar content lines up with the page content, which is at most 1600 px wide.
                     edges = page.evaluate("""() => { const main = document.querySelector("main"), style = getComputedStyle(main), box = main.getBoundingClientRect();
                         return [box.left + parseFloat(style.paddingLeft), box.right - parseFloat(style.paddingRight),
                                 document.querySelector(".turbo-sse-status").getBoundingClientRect().left,
                                 document.querySelector(".turbo-sse-export").getBoundingClientRect().right, box.width]; }""")
                     self.assertAlmostEqual(edges[2], edges[0], delta=1, msg=(width, edges))
                     self.assertAlmostEqual(edges[3], edges[1], delta=1, msg=(width, edges))
-                    self.assertLessEqual(edges[4], 2560)
+                    self.assertLessEqual(edges[4], 1600)
                     # Horizontal y labels still keep the y-axis gutter narrow; it widens only for the lane names.
-                    self.assertTrue(all(int(left[:-2]) <= 72 for left in page.evaluate('[...document.querySelectorAll(".turbo-sse-tools")].map(t => t.style.left)')), width)
+                    self.assertTrue(all(int(left[:-2]) <= 80 for left in page.evaluate('[...document.querySelectorAll(".turbo-sse-tools")].map(t => t.style.left)')), width)
                     # The plot band stays one row, so it takes little from the fixed-height plot area.
                     self.assertTrue(all(h <= 24 for h in page.evaluate('[...document.querySelectorAll(".turbo-sse-tools")].map(t => t.offsetHeight)')), width)
                     page.close()
