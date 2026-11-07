@@ -375,7 +375,7 @@ It is also a small classless stylesheet for the page around the plots:
 - Each `<section>` directly inside `<main>` becomes a column of one grid. Two columns share a row where both fit at 460 px or wider, and both are the same width, so the time axes of stacked plots line up; more sections continue in further rows, and a lone section takes the whole row. Set `--turbo-sse-column` to change the least column width. Everything else in `<main>` takes a full-width row.
 - A `<header>` directly inside `<main>` sets the `<h1>` title and a gray `<p>` tagline on one ruled line. `<h2>` is a smaller title.
 - `<h3>` is a quiet title.
-- Tables are panels like the plots: a frame, the `<caption>` as a title bar with the plot headers' gloss, a darker header row, faint row rules, gray header cells, white data cells and tabular figures. A row of one label and one value keeps the value on the right. Put a table in a `<section>` to give it a column of the grid. `<hr>` is a gray rule.
+- Tables are panels like the plots: a frame and the `<caption>` as a title bar with the plot headers' gloss. The header row is a lighter band with bright bold labels over a firm rule; body rows alternate in shade, with gray-white labels, white values and tabular figures. A row of one label and one value keeps the value on the right. Put a table in a `<section>` to give it a column of the grid. `<hr>` is a gray rule.
 - `<details>` is set off by a rule with a bold `<summary>`, and `<section>` blocks inside it get a border. `<pre>` wraps long lines and scrolls beyond 240 px.
 - `<kbd>` is a filled key glyph in capitals. `<footer>`, links, buttons, disabled buttons, focus rings and selected text get matching styles, and `[hidden]` always hides.
 
@@ -466,4 +466,4 @@ Publishing a GitHub Release attaches the same eight files to it; pushing a tag a
 
 ## Validation
 
-[VALIDATION.md](VALIDATION.md) records the test environment, numerical checks against reference statistics, live-run results, distribution sizes and the SHA-256 hashes of the tested build. The script and stylesheet total 28,010 bytes gzipped.
+[VALIDATION.md](VALIDATION.md) records the test environment, numerical checks against reference statistics, live-run results, distribution sizes and the SHA-256 hashes of the tested build. The script and stylesheet total 28,023 bytes gzipped.
