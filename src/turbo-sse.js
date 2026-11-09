@@ -356,7 +356,8 @@
       this.element = make("section", "turbo-sse-plot", undefined, host);
       this.element.setAttribute("aria-label", title);
       const header = make("header", "", undefined, this.element);
-      make("strong", "", title, header);
+      // A title too long for its bar ends in an ellipsis; its tooltip gives it in full.
+      make("strong", "", title, header).title = title;
       // An enlarged plot pages through the plots from its title bar, as a menu page does: ‹ 2/4 ›.
       this.pager = make("nav", "", undefined, header); this.pager.setAttribute("aria-label", "Plots");
       [-1, 1].forEach(step => {
@@ -371,7 +372,7 @@
       listen(header, "click", () => { if (this.armed && getSelection().isCollapsed) hooks.enlarge(this); });
       // The band above the data holds the plot controls only: equal keys, each with its key glyph.
       this.tools = make("div", "turbo-sse-tools");
-      this.controls = make("div", "", undefined, this.tools); this.controls.setAttribute("role", "toolbar");
+      this.controls = make("div", "", undefined, this.tools); this.controls.setAttribute("role", "toolbar"); this.controls.setAttribute("aria-label", "Plot controls");
       const live = make("label", "", undefined, this.controls);
       this.liveBox = make("input", "", undefined, live); this.liveBox.type = "checkbox"; this.liveBox.dataset.action = "Live"; make("span", "", "Live", live); make("kbd", "", "L", live);
       listen(this.liveBox, "change", () => this.live(this.liveBox.checked));
@@ -386,7 +387,9 @@
       this.canvas = make("canvas", "", undefined, this.area);
       this.canvas.tabIndex = 0;
       this.canvas.setAttribute("role", "img");
-      this.canvas.setAttribute("aria-label", title + ". Click to interact. Drag or arrow keys pan; wheel, + and − zoom; right-drag zooms a range; Shift-drag measures; A and B place markers; Esc clears; L live; F fit; E enlarge; J jump to a plot.");
+      // The guide line names the keys once for the page; it describes every plot to assistive technology too.
+      this.canvas.setAttribute("aria-label", title + ". Click to interact.");
+      this.canvas.setAttribute("aria-describedby", "turbo-sse-guide");
       // The gutter fits the unit, the lane names and, once drawn, the y labels. Lanes add rows below the numeric
       // area, or make up the whole plot.
       const pen = this.pen = this.canvas.getContext("2d"); pen.font = SMALL;
@@ -577,10 +580,11 @@
       const g = this.view, t = g.cursor, off = t === null || t < g.lo || t > g.hi;
       this.cursor.hidden = off;
       if (!off) {
-        // The time chip stays inside the plot area at its edges.
-        const x = this.x(t), label = format(t) + " s"; this.pen.font = SMALL;
+        // The time chip stays inside the plot area at its edges. On a marker, the line starts below the marker's
+        // flag, so the flag's letter stays readable.
+        const x = this.x(t), label = format(t) + " s", flag = [g.a, g.b].some(m => m !== null && Math.abs(this.x(m) - x) < 8) ? 16 : 0; this.pen.font = SMALL;
         const half = this.pen.measureText(label).width / 2 + 5;
-        this.cursor.style.cssText = `left:${x}px;top:${this.top}px;height:${this.span}px;--shift:${Math.min(Math.max(x, half + 2), this.left + this.width + 14 - half) - x}px`;
+        this.cursor.style.cssText = `left:${x}px;top:${this.top + flag}px;height:${this.span - flag}px;--shift:${Math.min(Math.max(x, half + 2), this.left + this.width + 14 - half) - x}px`;
         this.cursor.dataset.t = label;
       }
       this.horizontal.hidden = off || this.cursorY == null;
@@ -658,7 +662,8 @@
         if (p + ctx.measureText(label).width / 2 < room) ctx.fillText(label, p, h - 5);
       }
       rule(L + .5, T, L + .5, B + .5); rule(L, B + .5, end, B + .5);
-      ctx.textAlign = "right"; ctx.fillText(title, end, h - 5); ctx.textAlign = "left"; ctx.fillText(this.unit, 4, T - 4);
+      // The unit heads the y labels, at their right edge.
+      ctx.textAlign = "right"; ctx.fillText(title, end, h - 5); ctx.fillText(this.unit, L - 6, T - 4); ctx.textAlign = "left";
       ctx.save(); ctx.beginPath(); ctx.rect(L, T, this.width, this.height); ctx.clip();
       for (const c of this.series) {
         if (this.hidden.has(c)) continue;
@@ -840,33 +845,41 @@
     let channels = new Map(), plots = new Map(), groups = new Map();
     let graphDirty = false, lastDraw = -Infinity, big = null, saved = 0, pulse = -Infinity;
     const off = new AbortController(), on = (name, fn) => addEventListener(name, fn, {signal: off.signal});
+    // Arrows, signs and brackets sit lower in their line than capitals; their keys lift them.
+    const sign = text => `<kbd class="turbo-sse-sign">${text}</kbd>`;
     // The topbar: the connection state as a lit tab, readouts as small labels before values, then the keys.
     // The jump menu drops from it: one page of a camera menu, with the query in its title row.
     const bar = document.createElement("div");
     bar.className = "turbo-sse-bar";
     bar.innerHTML = '<span class="turbo-sse-status" role="status" aria-live="polite"></span><button type="button" class="turbo-sse-retry" hidden><span>Retry</span></button><span class="turbo-sse-uptime"></span><span class="turbo-sse-counts"></span><output></output>' +
-      '<button type="button" class="turbo-sse-jump" aria-haspopup="dialog" aria-expanded="false" hidden><span>Jump</span><kbd>J</kbd></button><button type="button" class="turbo-sse-export"><span>Export All</span></button>' +
+      '<span class="turbo-sse-keys"><button type="button" class="turbo-sse-jump" aria-haspopup="dialog" aria-expanded="false" hidden><span>Jump</span><kbd>J</kbd></button><button type="button" class="turbo-sse-export"><span>Export All</span></button></span>' +
       '<div class="turbo-sse-menu" role="dialog" aria-label="Jump to a plot" hidden><label><span>Jump to</span><input role="combobox" aria-expanded="true" aria-autocomplete="list" aria-controls="turbo-sse-results" autocomplete="off" spellcheck="false" placeholder="Plot or series name"><output aria-hidden="true"></output></label>' +
-      '<ul id="turbo-sse-results" role="listbox"></ul><p><span></span><span><kbd class="turbo-sse-sign">↑</kbd><kbd class="turbo-sse-sign">↓</kbd> Select</span><span><kbd>Enter</kbd> Jump</span><span><kbd>Esc</kbd> Close</span><span role="status"></span></p></div>';
-    const [status, retryButton, uptimeDisplay, counter, note, jumpButton, exportButton, menu] = bar.children;
+      '<ul id="turbo-sse-results" role="listbox"></ul><p><span></span><span>' + sign("↑") + sign("↓") + ' Select</span><span><kbd>Enter</kbd> Jump</span><span><kbd>Esc</kbd> Close</span><span role="status"></span></p></div>';
+    const [status, retryButton, uptimeDisplay, counter, note, keys, menu] = bar.children, [jumpButton, exportButton] = keys.children;
     const [query, pageCount] = menu.querySelectorAll("input, output"), list = menu.querySelector("ul"), [pages, , , , found] = menu.querySelector("p").children;
     root.prepend(bar);
     // The guide line along the bottom of the window shows the keys once for the page, as a camera's bottom line does:
     // which plot to click, then the keys of the plot in use, and in the enlarged view the paging keys with a square
     // for each plot. Touch screens list gestures instead.
     const guide = make("div", "turbo-sse-guide", undefined, root);
+    guide.id = "turbo-sse-guide";
+    // Each action is named once, after every way to do it. The line never wraps: hints that do not fit are left out
+    // whole, from its end, so those that have no button come first.
     guide.innerHTML = '<span data-for="idle"><b>Click a plot</b> to use it</span><span data-for="hover"><kbd>Click</kbd> to use <b></b></span>' +
-      [["<kbd>Drag</kbd>", "Pan"], ['<kbd class="turbo-sse-sign">←</kbd><kbd class="turbo-sse-sign">→</kbd>', "Pan"], ["<kbd>Wheel</kbd>", "Zoom"], ['<kbd class="turbo-sse-sign">+</kbd><kbd class="turbo-sse-sign">−</kbd>', "Zoom"],
-       ["<kbd>Right-drag</kbd>", "Zoom range"], ["<kbd>Shift</kbd>+<kbd>Drag</kbd>", "Measure"], ["<kbd>A</kbd><kbd>B</kbd>", "Markers"], ["<kbd>L</kbd>", "Live"], ["<kbd>F</kbd>", "Fit"], ["<kbd>E</kbd>", "Enlarge"], ["<kbd>Esc</kbd>", "Clear"]]
+      [["<kbd>Drag</kbd>" + sign("←") + sign("→"), "Pan"], ["<kbd>Wheel</kbd>" + sign("+") + sign("−"), "Zoom"], ["<kbd>Right-drag</kbd>", "Zoom range"], ["<kbd>Shift</kbd>+<kbd>Drag</kbd>", "Measure"],
+       ["<kbd>A</kbd><kbd>B</kbd>", "Markers"], ["<kbd>Esc</kbd>", "Clear"], ["<kbd>L</kbd>", "Live"], ["<kbd>F</kbd>", "Fit"], ["<kbd>E</kbd>", "Enlarge"]]
         .map(([keys, action]) => `<span data-for="active">${keys} ${action}</span>`).join("") +
-      '<span data-for="big"><kbd class="turbo-sse-sign">[</kbd><kbd class="turbo-sse-sign">]</kbd> Plots <i></i></span><span data-for="idle hover active" data-jump><kbd>J</kbd> Jump</span>' +
+      '<span data-for="big">' + sign("[") + sign("]") + ' Plots <i></i></span><span data-for="idle hover active" data-jump><kbd>J</kbd> Jump</span>' +
       '<span data-touch="idle hover"><b>Tap a plot</b> to use it</span><span data-touch="active"><b>Drag</b> Pan</span><span data-touch="active"><b>Tap</b> Place A</span><span data-touch="active"><b>Tap again</b> Place B</span>';
     const [hoverName, squares] = guide.querySelectorAll("[data-for=hover] b, [data-for=big] i"), jumpHint = guide.querySelector("[data-jump]");
+    // The last action, Enlarge, stands just before the paging hint; its word follows the plot's button.
+    const enlargeWord = squares.parentNode.previousSibling.lastChild;
     function hint() {
       const all = Array.from(plots.values()), hovered = all.find(p => p.hover && !p.active);
       guide.hidden = !all.length;
       guide.dataset.mode = big ? "big" : all.some(p => p.active) ? "active" : hovered ? "hover" : "idle";
       put(hoverName, hovered ? hovered.title : "");
+      put(enlargeWord, big ? " Reduce" : " Enlarge");
     }
 
     function configError(error) {
@@ -933,7 +946,7 @@
         if (s[key] || key == "retained" || key == "evicted") html += `<span${s[key] && !/^(retained|omitted)$/.test(key) ? " data-warn" : ""}><small>${label}</small> <b>${String(s[key]).replace(/\B(?=(\d{3})+$)/g, "\u202f")}</b></span> `;
       }
       show(counter, html);
-      show(uptimeDisplay, "<small>Uptime</small> <b>" + (s.uptime === null ? "—" + (clock.value === null ? "" : " (unsynchronized)") :
+      show(uptimeDisplay, "<small>Uptime</small> <b>" + (s.uptime === null ? "—" + (clock.value === null ? "" : "</b> <small>unsynchronized</small><b>") :
         "≈" + [Math.floor(s.uptime / 3600), Math.floor(s.uptime / 60) % 60, Math.floor(s.uptime) % 60].map(v => String(v).padStart(2, "0")).join(":")) + "</b>");
       exportButton.toggleAttribute("data-unsaved", counts.received > saved);
       if (Array.from(groups.values()).some(g => g.live)) invalidate();
@@ -1411,7 +1424,7 @@
     }
 
     async function showExports(selected, interval) {
-      if (exportBusy) return;
+      if (dead || exportBusy) return;
       closeExports();
       exportBusy = exportButton.disabled = true;
       const created = new Date().toISOString(), version = exportVersion, mark = counts.received, prefix = created.replace(/[:.]/g, "-"), lo = interval ? interval[0] : -Infinity, hi = interval ? interval[1] : Infinity;
@@ -1521,10 +1534,9 @@
       } finally { snapshots.length = 0; exportBusy = exportButton.disabled = false; }
     }
 
-    const exportClick = () => showExports();
-    const retry = () => connect(true);
-    exportButton.addEventListener("click", exportClick);
-    retryButton.addEventListener("click", retry);
+    // The topbar leaves the page with the runtime, and its listeners with it.
+    exportButton.addEventListener("click", () => showExports());
+    retryButton.addEventListener("click", () => connect(true));
     jumpButton.addEventListener("click", () => jump(menu.hidden));
     // J or / opens the jump menu, unless you are typing in a field of the page; a press elsewhere closes it.
     on("keydown", event => {
@@ -1532,7 +1544,9 @@
     });
     on("pointerdown", event => { if (!bar.contains(event.target)) jump(false); });
     on("popstate", () => enlarge());
-    on("resize", () => enlarge());
+    // The topbar changes height when the window narrows or its counters wrap; an enlarged plot starts below it.
+    const sized = new ResizeObserver(() => enlarge());
+    sized.observe(bar);
     // Leaving the page loses everything received since the last Export All, so the browser asks first.
     on("beforeunload", event => { if (counts.received > saved) { event.preventDefault(); event.returnValue = true; } });
     try {
@@ -1554,13 +1568,11 @@
       refresh, exportCSV, stats,
       destroy() {
         dead = true;
-        off.abort();
+        off.abort(); sized.disconnect();
         closeSource();
         clearTimeout(retryTimer);
         clearInterval(counterTimer);
         cancelAnimationFrame(frame);
-        exportButton.removeEventListener("click", exportClick);
-        retryButton.removeEventListener("click", retry);
         closeExports();
         bar.remove(); guide.remove();
         for (const p of plots.values()) p.destroy();

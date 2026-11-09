@@ -312,6 +312,47 @@ class BrowserCases:
         # Jumping needs at least two plots.
         expect(self.page.locator(".turbo-sse-jump")).to_be_hidden()
 
+    def test_topbar_keys_keep_the_right_edge_and_show_their_state(self):
+        # Two plots give the topbar both keys; broken JSON and a throwing transform add two error counters.
+        self.open('<div data-sse-graph data-sse-event="a"></div><div data-sse-graph data-sse-event="b"></div>'
+                  '<span data-sse-event="j" data-sse-json="/x"></span><span data-sse-event="a" data-sse-transform="boom"></span>',
+                  functions='window.boom = () => { throw new Error("boom"); };')
+        layout = '''() => { const box = s => document.querySelector(s).getBoundingClientRect(), bar = box(".turbo-sse-bar"), jump = box(".turbo-sse-jump"), all = box(".turbo-sse-export");
+            const style = getComputedStyle(document.querySelector(".turbo-sse-bar")), counts = box(".turbo-sse-counts");
+            return {edge: Math.round(bar.right - parseFloat(style.paddingRight) - all.right), gap: Math.round(all.left - jump.right), row: Math.round(all.top - jump.top),
+                    inside: counts.right <= jump.left || counts.bottom <= jump.top, height: Math.round(bar.height), overflow: document.documentElement.scrollWidth > innerWidth}; }'''
+        heights = {}
+        for errors in (False, True):
+            if errors:
+                self.case.emit("a", "1"); self.case.emit("j", "{broken"); self.received(2)
+                expect(self.page.locator(".turbo-sse-counts [data-warn]")).to_have_count(2)
+            for width in (1100, 760, 680, 620, 500, 390):
+                self.page.set_viewport_size({"width": width, "height": 600})
+                found = self.page.evaluate(layout)
+                heights[errors, width] = found.pop("height")
+                # Jump and Export All stay together at the right edge, and the counters never run under them.
+                self.assertEqual(found, {"edge": 0, "gap": 8, "row": 0, "inside": True, "overflow": False}, (errors, width))
+        # The bar is one row while its content fits. Counters that do not fit wrap between the uptime and the keys.
+        self.assertEqual([heights[False, 1100], heights[False, 760], heights[True, 1100]], [44, 44, 44], heights)
+        self.assertGreater(heights[True, 760], 44, heights)
+        self.assertLessEqual(max(heights.values()), 120, heights)
+        # A key lights its border under the pointer, takes the selection while pressed and dims while disabled.
+        self.page.set_viewport_size({"width": 1100, "height": 600})
+        jump, look = self.page.locator(".turbo-sse-jump"), "e => { const s = getComputedStyle(e); return [s.borderTopColor, s.backgroundImage.includes('243, 154, 82')]; }"
+        self.page.mouse.move(5, 300)
+        self.assertEqual(jump.evaluate(look), ["rgb(108, 108, 108)", False])
+        box = jump.bounding_box()
+        self.page.mouse.move(box["x"] + 6, box["y"] + 6)
+        self.assertEqual(jump.evaluate(look), ["rgb(255, 255, 255)", False])
+        self.page.mouse.down()
+        self.assertEqual(jump.evaluate(look), ["rgb(243, 154, 82)", True])
+        self.page.mouse.up()
+        expect(self.page.locator(".turbo-sse-menu")).to_be_visible()
+        self.page.keyboard.press("Escape")
+        export = self.page.locator(".turbo-sse-export")
+        export.evaluate("e => { e.disabled = true; }")
+        self.assertEqual(export.evaluate("e => { const s = getComputedStyle(e); return [s.color, s.backgroundImage]; }"), ["rgb(94, 94, 94)", "none"])
+
     def test_empty_id_resets_native_resume_header(self):
         self.open('<span data-sse-event="v"></span>')
         self.case.emit("v", "a", "boot:1")
@@ -409,6 +450,9 @@ class BrowserCases:
         self.page.wait_for_function("TurboSSE.stats().uptime === null")
         self.wait_requests(2)
         self.text(".turbo-sse-status", "Connected")
+        # Until the next report, the uptime is a dash with a small label saying why.
+        expect(self.page.locator(".turbo-sse-uptime small")).to_have_text(["Uptime", "unsynchronized"])
+        expect(self.page.locator(".turbo-sse-uptime b").first).to_have_text("—")
         self.case.emit("uptime", "invalid")
         self.case.emit("uptime", "2500000")
         self.received(3)

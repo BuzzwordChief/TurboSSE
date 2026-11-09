@@ -30,7 +30,19 @@
               <tr><th>Outlet temperature</th><td id="outlet-value" data-sse-event="telemetry" data-sse-json="/outlet" data-sse-transform="celsius_to_degree">—</td></tr>
               <tr><th>Motor speed</th><td><span id="rpm-value" data-sse-event="telemetry" data-sse-json="/rpm">—</span> rpm</td></tr>
               <tr><th>Supply voltage</th><td id="voltage-value" data-sse-event="telemetry" data-sse-json="/voltage" data-sse-transform="volts_to_millivolts">—</td></tr>
+          </tbody>
+      </table>
+    </section>
+
+    <section>
+      <table>
+          <caption>Device</caption>
+          <thead><tr><th>Signal</th><th>State</th></tr></thead>
+          <tbody>
               <tr><th>Device state</th><td id="device-state" data-sse-event="status" data-sse-format="html">Waiting for device…</td></tr>
+              <tr><th>Controller</th><td id="controller-value" data-sse-event="telemetry" data-sse-json="/state">—</td></tr>
+              <tr><th>Pump</th><td id="pump-value" data-sse-event="telemetry" data-sse-json="/pump" data-sse-transform="on_off">—</td></tr>
+              <tr><th>Status register</th><td id="status-value" data-sse-event="telemetry" data-sse-json="/status" data-sse-transform="hex16">—</td></tr>
           </tbody>
       </table>
     </section>

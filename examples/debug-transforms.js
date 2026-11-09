@@ -8,6 +8,11 @@ window.volts_to_millivolts = function (value) {
   return `${Math.round(value * 1000)} mV`;
 };
 
+// Shows a JSON boolean as a switch position.
+window.on_off = function (value) {
+  return value ? "On" : "Off";
+};
+
 // Graphs keep numeric values; presentation transforms above return text.
 window.numeric_millivolts = function (value) {
   return Number(value) * 1000;

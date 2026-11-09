@@ -2,6 +2,7 @@
 import csv
 import io
 from pathlib import Path
+import re
 import threading
 import unittest
 import zipfile
@@ -74,7 +75,11 @@ class DemoTests(unittest.TestCase):
                     self.assertTrue(layout["plotHeader"].startswith("linear-gradient"), layout)
                     self.assertEqual(layout["value"], "right")
                     self.assertEqual(layout["pre"], "pre-wrap")
-                    self.assertEqual(page.locator("main table caption").text_content(), "Real-time values")
+                    self.assertEqual(page.locator("main table caption").all_text_contents(), ["Real-time values", "Device"])
+                    # The two tables share the first row where two columns fit, at one height.
+                    tables = page.locator("main table").evaluate_all("e => e.map(t => { const r = t.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.height)]; })")
+                    self.assertEqual(tables[0][1], tables[1][1], (width, tables))
+                    self.assertEqual(tables[0][0] == tables[1][0], columns == 2, (width, tables))
                     # The topbar content lines up with the page content, which is at most 1600 px wide.
                     edges = page.evaluate("""() => { const main = document.querySelector("main"), style = getComputedStyle(main), box = main.getBoundingClientRect();
                         return [box.left + parseFloat(style.paddingLeft), box.right - parseFloat(style.paddingRight),
@@ -103,6 +108,10 @@ class DemoTests(unittest.TestCase):
                 expect(page.locator('#temperature-value')).to_contain_text("°C")
                 expect(page.locator('#voltage-value')).to_contain_text("mV")
                 expect(page.locator('#device-state')).to_have_text("Running")
+                # JSON values show as text: a state name, a boolean through its transform, a register in hex.
+                expect(page.locator('#controller-value')).to_have_text(re.compile(r"^(IDLE|RAMP UP|RUN|RAMP DOWN)$"))
+                expect(page.locator('#pump-value')).to_have_text(re.compile(r"^(On|Off)$"))
+                expect(page.locator('#status-value')).to_have_text(re.compile(r"^0x[0-9a-f]{4}$"))
                 page.wait_for_function("TurboSSE.stats().retained >= 6")
                 expect(page.locator(".turbo-sse-counts")).not_to_contain_text("Captured 0")
                 output = ROOT / "test-results"
